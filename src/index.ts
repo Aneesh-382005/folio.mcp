@@ -1,18 +1,22 @@
-/**
- * Welcome to Cloudflare Workers! This is your first worker.
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your worker in action
- * - Run `npm run deploy` to publish your worker
- *
- * Bind resources to your worker in `wrangler.jsonc`. After adding bindings, a type definition for the
- * `Env` object can be regenerated with `npm run cf-typegen`.
- *
- * Learn more at https://developers.cloudflare.com/workers/
- */
+import { Hono } from "hono";
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
+
+const mcpServer = new McpServer({
+	name: 'folio-mcp',
+	version: '0.0.0',
+});
+
+const app = new Hono();
+
+app.get('/', (c) => c.json({ status: 'ok' }));
+
+app.all('/mcp', async (c) => {
+	const transport = new WebStandardStreamableHTTPServerTransport();
+	await mcpServer.connect(transport);
+	return transport.handleRequest(c.req.raw);
+});
 
 export default {
-	async fetch(request, env, ctx): Promise<Response> {
-		return new Response("Hello World!");
-	},
+	fetch: app.fetch,
 } satisfies ExportedHandler<Env>;
