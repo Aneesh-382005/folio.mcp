@@ -7,6 +7,16 @@ Cloudflare Workers MCP server for personal GitHub summaries.
 - Edit `src/github-config.ts` to change your GitHub username.
 - Edit `src/github-config.ts` to change tool titles and descriptions.
 
+## Local dev
+
+The current tool, `get_recent_work`, only uses public GitHub endpoints and does not require a token.
+
+If you want to set `GITHUB_TOKEN` in your local shell for future work or private API experiments, you can do that without changing the deployed Worker:
+
+```bash
+export GITHUB_TOKEN='your-token-here'
+```
+
 ## Deploy
 
 Manual deploy:

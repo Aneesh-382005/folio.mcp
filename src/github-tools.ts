@@ -1,4 +1,3 @@
-import * as z from 'zod/v4';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { githubConfig } from './github-config';
 
@@ -62,13 +61,10 @@ function monthsAgoDate(months: number) {
   return date;
 }
 
-function isValidRepoName(repo: string) {
-  return /^[A-Za-z0-9._-]{1,100}$/.test(repo);
-}
-
 async function fetchRecentWork(githubUser: string) {
-  const twelveMonthsAgo = monthsAgoDate(12).toISOString();
+  const twelveMonthsAgo = monthsAgoDate(12);
 
+  // Fetch personal (owned) repos
   let owned: GitHubRepo[] = [];
   try {
     owned = await githubFetch<GitHubRepo[]>(`/users/${githubUser}/repos?type=owner&per_page=100&sort=updated`);
@@ -76,31 +72,45 @@ async function fetchRecentWork(githubUser: string) {
     console.warn('Could not fetch owned repos', error);
   }
 
-  let eventRepos = new Set<string>();
+  // Fetch organizations the user belongs to, then fetch public repos for each org
+  let orgRepos: GitHubRepo[] = [];
   try {
-    const events = await githubFetch<any[]>(`/users/${githubUser}/events/public`);
-    eventRepos = new Set(
-      events
-        .filter((event) => ['PushEvent', 'PullRequestEvent', 'PullRequestReviewEvent'].includes(event.type))
-        .map((event) => event.repo?.name)
-        .filter(Boolean)
-    );
+    const orgs = await githubFetch<any[]>(`/users/${githubUser}/orgs`);
+    for (const org of orgs) {
+      try {
+        const repos = await githubFetch<GitHubRepo[]>(`/orgs/${org.login}/repos?type=public&per_page=100&sort=updated`);
+        orgRepos = orgRepos.concat(repos.map((r) => ({ ...r })));
+      } catch (err) {
+        console.warn(`Could not fetch repos for org ${org.login}`, err);
+      }
+    }
   } catch (error) {
-    console.warn('Could not fetch user events', error);
+    console.warn('Could not fetch user orgs', error);
   }
 
-  const recentWork = owned
-    .filter((repo) => !repo.fork && repo.description && new Date(repo.pushed_at) >= new Date(twelveMonthsAgo))
+  // Combine, dedupe by full_name (or name fallback)
+  const combinedMap = new Map<string, GitHubRepo>();
+  const pushRepo = (r: GitHubRepo) => {
+    const key = r.full_name ?? `${githubUser}/${r.name}`;
+    if (!combinedMap.has(key)) combinedMap.set(key, r);
+  };
+
+  for (const r of owned) pushRepo(r);
+  for (const r of orgRepos) pushRepo(r);
+
+  const twelveMonthsAgoISO = twelveMonthsAgo.toISOString();
+
+  const recent = Array.from(combinedMap.values())
+    .filter((repo) => !repo.fork && new Date(repo.pushed_at) >= new Date(twelveMonthsAgoISO))
     .map((repo) => ({
       ...toRepoDetail(repo),
-      activity: eventRepos.has(repo.full_name ?? `${githubUser}/${repo.name}`) ? 'public activity' : 'recent push',
       recent: repo.pushed_at
     }))
     .sort((a, b) => new Date(b.recent).getTime() - new Date(a.recent).getTime())
-    .slice(0, 12)
+    .slice(0, 100)
     .map(({ recent, ...repo }) => repo);
 
-  return { username: githubUser, recentWork };
+  return { username: githubUser, recentWork: recent };
 }
 
 export function registerGitHubTools(server: McpServer) {
@@ -113,29 +123,6 @@ export function registerGitHubTools(server: McpServer) {
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
         structuredContent: result
-      };
-    }
-  );
-
-  server.tool(
-    'get_repo_detail',
-    githubConfig.tools.getRepoDetail.description,
-    {
-      repo: z.string().min(1).max(100).describe('Repository name only (example: folio-mcp)')
-    },
-    async ({ repo }) => {
-      const repoName = repo.trim();
-
-      if (!isValidRepoName(repoName)) {
-        throw new Error('Invalid repo name. Use only letters, numbers, dot, underscore, and hyphen.');
-      }
-
-      const ghRepo = await githubFetch<GitHubRepo>(`/repos/${githubConfig.username}/${encodeURIComponent(repoName)}`);
-      const detail = toRepoDetail(ghRepo);
-
-      return {
-        content: [{ type: 'text', text: JSON.stringify(detail, null, 2) }],
-        structuredContent: detail
       };
     }
   );
