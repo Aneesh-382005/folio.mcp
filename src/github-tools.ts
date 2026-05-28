@@ -1,5 +1,6 @@
 import * as z from 'zod/v4';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { githubConfig } from './github-config';
 
 const GITHUB_API_BASE = 'https://api.github.com';
 const GITHUB_HEADERS: HeadersInit = {
@@ -102,12 +103,12 @@ async function fetchRecentWork(githubUser: string) {
   return { username: githubUser, recentWork };
 }
 
-export function registerGitHubTools(server: McpServer, githubUser: string) {
+export function registerGitHubTools(server: McpServer) {
   server.tool(
     'get_recent_work',
-    'Returns repositories the user has actively worked on in the last 12 months (non-fork, with description, meaningful contributions).',
+    githubConfig.tools.getRecentWork.description,
     async () => {
-      const result = await fetchRecentWork(githubUser);
+      const result = await fetchRecentWork(githubConfig.username);
 
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
@@ -118,7 +119,7 @@ export function registerGitHubTools(server: McpServer, githubUser: string) {
 
   server.tool(
     'get_repo_detail',
-    'Returns detail for one public repository owned by the configured GitHub user.',
+    githubConfig.tools.getRepoDetail.description,
     {
       repo: z.string().min(1).max(100).describe('Repository name only (example: folio-mcp)')
     },
@@ -129,7 +130,7 @@ export function registerGitHubTools(server: McpServer, githubUser: string) {
         throw new Error('Invalid repo name. Use only letters, numbers, dot, underscore, and hyphen.');
       }
 
-      const ghRepo = await githubFetch<GitHubRepo>(`/repos/${githubUser}/${encodeURIComponent(repoName)}`);
+      const ghRepo = await githubFetch<GitHubRepo>(`/repos/${githubConfig.username}/${encodeURIComponent(repoName)}`);
       const detail = toRepoDetail(ghRepo);
 
       return {

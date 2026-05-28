@@ -2,6 +2,11 @@
 
 Cloudflare Workers MCP server for personal GitHub summaries.
 
+## Config
+
+- Edit `src/github-config.ts` to change your GitHub username.
+- Edit `src/github-config.ts` to change tool titles and descriptions.
+
 ## Deploy
 
 Manual deploy:
@@ -17,9 +22,7 @@ Required repository secrets:
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
 
-Required Worker vars:
-
-- `GITHUB_USER` in `wrangler.jsonc`
+No Worker vars are required for the current setup.
 
 ## Notes
 
