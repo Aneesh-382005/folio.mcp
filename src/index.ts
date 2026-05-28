@@ -10,7 +10,8 @@ app.get('/', (c) => c.json({ status: 'ok' }));
 app.all('/mcp', async (c) => {
   const server = new McpServer({ name: 'folio-mcp', version: '0.0.0' });
 
-  registerGitHubTools(server);
+  const env = c.env as { GITHUB_TOKEN?: string };
+  registerGitHubTools(server, env.GITHUB_TOKEN);
 
   const transport = new WebStandardStreamableHTTPServerTransport();
   await server.connect(transport);

@@ -42,9 +42,15 @@ function toRepoDetail(repo: GitHubRepo): RepoDetail {
   };
 }
 
-async function githubFetch<T>(path: string): Promise<T> {
+async function githubFetch<T>(path: string, githubToken?: string): Promise<T> {
+  const headers = new Headers(GITHUB_HEADERS);
+
+  if (githubToken) {
+    headers.set('Authorization', `Bearer ${githubToken}`);
+  }
+
   const response = await fetch(`${GITHUB_API_BASE}${path}`, {
-    headers: GITHUB_HEADERS
+    headers
   });
 
   if (!response.ok) {
@@ -61,13 +67,13 @@ function monthsAgoDate(months: number) {
   return date;
 }
 
-async function fetchRecentWork(githubUser: string) {
+async function fetchRecentWork(githubUser: string, githubToken?: string) {
   const twelveMonthsAgo = monthsAgoDate(12);
 
   // Fetch personal (owned) repos
   let owned: GitHubRepo[] = [];
   try {
-    owned = await githubFetch<GitHubRepo[]>(`/users/${githubUser}/repos?type=owner&per_page=100&sort=updated`);
+    owned = await githubFetch<GitHubRepo[]>(`/users/${githubUser}/repos?type=owner&per_page=100&sort=updated`, githubToken);
   } catch (error) {
     console.warn('Could not fetch owned repos', error);
   }
@@ -75,10 +81,10 @@ async function fetchRecentWork(githubUser: string) {
   // Fetch organizations the user belongs to, then fetch public repos for each org
   let orgRepos: GitHubRepo[] = [];
   try {
-    const orgs = await githubFetch<any[]>(`/users/${githubUser}/orgs`);
+    const orgs = await githubFetch<any[]>(`/users/${githubUser}/orgs`, githubToken);
     for (const org of orgs) {
       try {
-        const repos = await githubFetch<GitHubRepo[]>(`/orgs/${org.login}/repos?type=public&per_page=100&sort=updated`);
+        const repos = await githubFetch<GitHubRepo[]>(`/orgs/${org.login}/repos?type=public&per_page=100&sort=updated`, githubToken);
         orgRepos = orgRepos.concat(repos.map((r) => ({ ...r })));
       } catch (err) {
         console.warn(`Could not fetch repos for org ${org.login}`, err);
@@ -101,7 +107,7 @@ async function fetchRecentWork(githubUser: string) {
   const twelveMonthsAgoISO = twelveMonthsAgo.toISOString();
 
   const recent = Array.from(combinedMap.values())
-    .filter((repo) => !repo.fork && new Date(repo.pushed_at) >= new Date(twelveMonthsAgoISO))
+    .filter((repo) => !repo.fork && Boolean(repo.description?.trim()) && new Date(repo.pushed_at) >= new Date(twelveMonthsAgoISO))
     .map((repo) => ({
       ...toRepoDetail(repo),
       recent: repo.pushed_at
@@ -113,12 +119,12 @@ async function fetchRecentWork(githubUser: string) {
   return { username: githubUser, recentWork: recent };
 }
 
-export function registerGitHubTools(server: McpServer) {
+export function registerGitHubTools(server: McpServer, githubToken?: string) {
   server.tool(
     'get_recent_work',
     githubConfig.tools.getRecentWork.description,
     async () => {
-      const result = await fetchRecentWork(githubConfig.username);
+      const result = await fetchRecentWork(githubConfig.username, githubToken);
 
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],

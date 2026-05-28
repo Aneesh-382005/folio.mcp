@@ -9,13 +9,21 @@ Cloudflare Workers MCP server for personal GitHub summaries.
 
 ## Local dev
 
-The current tool, `get_recent_work`, only uses public GitHub endpoints and does not require a token.
+The current tool, `get_recent_work`, can use `GITHUB_TOKEN` for fuller org visibility, but it also works without it.
 
-If you want to set `GITHUB_TOKEN` in your local shell for future work or private API experiments, you can do that without changing the deployed Worker:
+For seamless local dev, add your token to `.dev.vars` in the project root:
+
+```bash
+GITHUB_TOKEN=your-token-here
+```
+
+If you prefer, you can also export it in your shell for the current session only:
 
 ```bash
 export GITHUB_TOKEN='your-token-here'
 ```
+
+Cloudflare production uses `wrangler secret put GITHUB_TOKEN`.
 
 ## Deploy
 
@@ -32,7 +40,7 @@ Required repository secrets:
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
 
-No Worker vars are required for the current setup.
+No non-secret Worker vars are required for the current setup.
 
 ## Notes
 
