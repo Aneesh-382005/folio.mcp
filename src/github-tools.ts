@@ -1,3 +1,4 @@
+import * as z from 'zod/v4';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { githubConfig } from './github-config';
 
@@ -119,12 +120,131 @@ async function fetchRecentWork(githubUser: string, githubToken?: string) {
   return { username: githubUser, recentWork: recent };
 }
 
-export function registerGitHubTools(server: McpServer, githubToken?: string) {
+function b64Decode(input: string) {
+  if (typeof atob === 'function') return atob(input);
+  if (typeof Buffer !== 'undefined') return Buffer.from(input, 'base64').toString('utf8');
+  throw new Error('No base64 decoder available');
+}
+
+export function registerGitHubTools(server: McpServer, githubUser?: string, githubToken?: string) {
   server.tool(
     'get_recent_work',
     githubConfig.tools.getRecentWork.description,
     async () => {
-      const result = await fetchRecentWork(githubConfig.username, githubToken);
+      const result = await fetchRecentWork(githubUser ?? githubConfig.username, githubToken);
+
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        structuredContent: result
+      };
+    }
+  );
+
+  // get_repo_detail: fetch core metadata + languages + topics + full README
+  server.tool(
+    'get_repo_detail',
+    githubConfig.tools.getRepoDetail.description,
+    {
+      repo: z.string().min(1).describe('Repository name or owner/name'),
+      owner: z.string().optional().describe('Optional owner/org if repo is short name'),
+      include_readme: z.boolean().optional().default(true),
+      include_languages: z.boolean().optional().default(true)
+    },
+    async ({ repo, owner, include_readme, include_languages }) => {
+      // resolve owner/repo
+      let ownerName = owner;
+      let repoName = repo;
+      if (repo.includes('/')) {
+        const parts = repo.split('/');
+        ownerName = parts[0];
+        repoName = parts.slice(1).join('/');
+      }
+      ownerName = ownerName ?? githubConfig.username;
+
+      // fetch core repo metadata (standard Accept header)
+      const headers = new Headers(GITHUB_HEADERS);
+      if (githubToken) headers.set('Authorization', `Bearer ${githubToken}`);
+      headers.set('Accept', 'application/vnd.github+json');
+
+      const repoResp = await fetch(`${GITHUB_API_BASE}/repos/${ownerName}/${repoName}`, {
+        headers
+      });
+
+      if (!repoResp.ok) {
+        const body = await repoResp.text();
+        throw new Error(`GitHub repo fetch error ${repoResp.status}: ${body}`);
+      }
+
+      const repoJson: any = await repoResp.json();
+
+      // languages
+      let languages: Record<string, number> | null = null;
+      if (include_languages) {
+        try {
+          languages = await githubFetch<Record<string, number>>(`/repos/${ownerName}/${repoName}/languages`, githubToken);
+        } catch (err) {
+          console.warn('Could not fetch languages', err);
+        }
+      }
+
+      // readme (full, no truncation) - try raw first
+      let readme: { text?: string; encoding?: string } | null = null;
+      if (include_readme) {
+        try {
+          const rawHeaders = new Headers(GITHUB_HEADERS);
+          if (githubToken) rawHeaders.set('Authorization', `Bearer ${githubToken}`);
+          rawHeaders.set('Accept', 'application/vnd.github.v3.raw');
+
+          const rawResp = await fetch(`${GITHUB_API_BASE}/repos/${ownerName}/${repoName}/readme`, {
+            headers: rawHeaders
+          });
+
+          if (rawResp.status === 404) {
+            readme = null; // no README
+          } else if (!rawResp.ok) {
+            throw new Error(`README fetch failed: ${rawResp.status}`);
+          } else {
+            const text = await rawResp.text();
+            readme = { text };
+          }
+        } catch (err) {
+          console.warn('Could not fetch README', err);
+        }
+      }
+
+      const result = {
+        name: repoJson.name,
+        full_name: repoJson.full_name,
+        description: repoJson.description,
+        html_url: repoJson.html_url,
+        default_branch: repoJson.default_branch ?? 'main',
+        primary_language: repoJson.language ?? null,
+        languages: languages,
+        topics: repoJson.topics ?? [],
+        stars: repoJson.stargazers_count ?? 0,
+        forks: repoJson.forks_count ?? 0,
+        open_issues: repoJson.open_issues_count ?? 0,
+        last_pushed_at: repoJson.pushed_at,
+        created_at: repoJson.created_at,
+        updated_at: repoJson.updated_at,
+        license: repoJson.license?.name ?? null,
+        archived: repoJson.archived ?? false,
+        fork: repoJson.fork ?? false,
+        private: repoJson.private ?? false,
+        readme: readme,
+        // shallow top-level file tree for quick architecture overview
+        tree: [],
+        fetched_at: new Date().toISOString()
+      };
+
+      // fetch shallow file tree (recursive=0) for top-level file list
+      try {
+        const treeResp = await githubFetch<any>(`/repos/${ownerName}/${repoName}/git/trees/HEAD?recursive=0`, githubToken);
+        result.tree = treeResp?.tree?.map((f: any) => f.path) ?? [];
+      } catch (err) {
+        console.warn('Could not fetch repo tree', err);
+        result.tree = [];
+      }
 
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
