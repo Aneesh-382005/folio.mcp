@@ -1,12 +1,20 @@
 import * as z from 'zod/v4';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { githubConfig } from './github-config';
+import { withCache } from './cache';
 
 const GITHUB_API_BASE = 'https://api.github.com';
 const GITHUB_HEADERS: HeadersInit = {
   Accept: 'application/vnd.github+json',
   'User-Agent': 'folio-mcp-worker'
 };
+
+const RECENT_WORK_TTL_SECONDS = 15 * 60;
+const REPO_DETAIL_TTL_SECONDS = 60 * 60;
+
+function githubCacheKey(scope: string, ...parts: Array<string | number | boolean>) {
+  return ['github', scope, ...parts].map((p) => encodeURIComponent(String(p))).join(':');
+}
 
 type GitHubRepo = {
   name: string;
@@ -126,12 +134,24 @@ function b64Decode(input: string) {
   throw new Error('No base64 decoder available');
 }
 
-export function registerGitHubTools(server: McpServer, githubUser?: string, githubToken?: string) {
+export function registerGitHubTools(
+  server: McpServer,
+  githubUser?: string,
+  githubToken?: string,
+  cacheKv?: KVNamespace
+) {
+  const resolvedUser = githubUser ?? githubConfig.username;
+
   server.tool(
     'get_recent_work',
     githubConfig.tools.getRecentWork.description,
     async () => {
-      const result = await fetchRecentWork(githubUser ?? githubConfig.username, githubToken);
+      const result = await withCache(
+        cacheKv,
+        githubCacheKey('recent_work', resolvedUser, githubToken ? 'auth' : 'anon'),
+        RECENT_WORK_TTL_SECONDS,
+        () => fetchRecentWork(resolvedUser, githubToken)
+      );
 
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
@@ -140,7 +160,6 @@ export function registerGitHubTools(server: McpServer, githubUser?: string, gith
     }
   );
 
-  // get_repo_detail: fetch core metadata + languages + topics + full README
   server.tool(
     'get_repo_detail',
     githubConfig.tools.getRepoDetail.description,
@@ -151,100 +170,118 @@ export function registerGitHubTools(server: McpServer, githubUser?: string, gith
       include_languages: z.boolean().optional().default(true)
     },
     async ({ repo, owner, include_readme, include_languages }) => {
-      // resolve owner/repo
       let ownerName = owner;
       let repoName = repo;
+
       if (repo.includes('/')) {
         const parts = repo.split('/');
         ownerName = parts[0];
         repoName = parts.slice(1).join('/');
       }
-      ownerName = ownerName ?? githubConfig.username;
 
-      // fetch core repo metadata (standard Accept header)
-      const headers = new Headers(GITHUB_HEADERS);
-      if (githubToken) headers.set('Authorization', `Bearer ${githubToken}`);
-      headers.set('Accept', 'application/vnd.github+json');
+      ownerName = ownerName ?? resolvedUser;
 
-      const repoResp = await fetch(`${GITHUB_API_BASE}/repos/${ownerName}/${repoName}`, {
-        headers
-      });
+      const result = await withCache(
+        cacheKv,
+        githubCacheKey(
+          'repo_detail',
+          ownerName,
+          repoName,
+          `readme=${include_readme ? 1 : 0}`,
+          `languages=${include_languages ? 1 : 0}`,
+          githubToken ? 'auth' : 'anon'
+        ),
+        REPO_DETAIL_TTL_SECONDS,
+        async () => {
+          const headers = new Headers(GITHUB_HEADERS);
+          if (githubToken) headers.set('Authorization', `Bearer ${githubToken}`);
+          headers.set('Accept', 'application/vnd.github+json');
 
-      if (!repoResp.ok) {
-        const body = await repoResp.text();
-        throw new Error(`GitHub repo fetch error ${repoResp.status}: ${body}`);
-      }
-
-      const repoJson: any = await repoResp.json();
-
-      // languages
-      let languages: Record<string, number> | null = null;
-      if (include_languages) {
-        try {
-          languages = await githubFetch<Record<string, number>>(`/repos/${ownerName}/${repoName}/languages`, githubToken);
-        } catch (err) {
-          console.warn('Could not fetch languages', err);
-        }
-      }
-
-      // readme (full, no truncation) - try raw first
-      let readme: { text?: string; encoding?: string } | null = null;
-      if (include_readme) {
-        try {
-          const rawHeaders = new Headers(GITHUB_HEADERS);
-          if (githubToken) rawHeaders.set('Authorization', `Bearer ${githubToken}`);
-          rawHeaders.set('Accept', 'application/vnd.github.v3.raw');
-
-          const rawResp = await fetch(`${GITHUB_API_BASE}/repos/${ownerName}/${repoName}/readme`, {
-            headers: rawHeaders
+          const repoResp = await fetch(`${GITHUB_API_BASE}/repos/${ownerName}/${repoName}`, {
+            headers
           });
 
-          if (rawResp.status === 404) {
-            readme = null; // no README
-          } else if (!rawResp.ok) {
-            throw new Error(`README fetch failed: ${rawResp.status}`);
-          } else {
-            const text = await rawResp.text();
-            readme = { text };
+          if (!repoResp.ok) {
+            const body = await repoResp.text();
+            throw new Error(`GitHub repo fetch error ${repoResp.status}: ${body}`);
           }
-        } catch (err) {
-          console.warn('Could not fetch README', err);
+
+          const repoJson: any = await repoResp.json();
+
+          let languages: Record<string, number> | null = null;
+          if (include_languages) {
+            try {
+              languages = await githubFetch<Record<string, number>>(
+                `/repos/${ownerName}/${repoName}/languages`,
+                githubToken
+              );
+            } catch (err) {
+              console.warn('Could not fetch languages', err);
+            }
+          }
+
+          let readme: { text?: string; encoding?: string } | null = null;
+          if (include_readme) {
+            try {
+              const rawHeaders = new Headers(GITHUB_HEADERS);
+              if (githubToken) rawHeaders.set('Authorization', `Bearer ${githubToken}`);
+              rawHeaders.set('Accept', 'application/vnd.github.v3.raw');
+
+              const rawResp = await fetch(`${GITHUB_API_BASE}/repos/${ownerName}/${repoName}/readme`, {
+                headers: rawHeaders
+              });
+
+              if (rawResp.status === 404) {
+                readme = null;
+              } else if (!rawResp.ok) {
+                throw new Error(`README fetch failed: ${rawResp.status}`);
+              } else {
+                const text = await rawResp.text();
+                readme = { text };
+              }
+            } catch (err) {
+              console.warn('Could not fetch README', err);
+            }
+          }
+
+          const result = {
+            name: repoJson.name,
+            full_name: repoJson.full_name,
+            description: repoJson.description,
+            html_url: repoJson.html_url,
+            default_branch: repoJson.default_branch ?? 'main',
+            primary_language: repoJson.language ?? null,
+            languages,
+            topics: repoJson.topics ?? [],
+            stars: repoJson.stargazers_count ?? 0,
+            forks: repoJson.forks_count ?? 0,
+            open_issues: repoJson.open_issues_count ?? 0,
+            last_pushed_at: repoJson.pushed_at,
+            created_at: repoJson.created_at,
+            updated_at: repoJson.updated_at,
+            license: repoJson.license?.name ?? null,
+            archived: repoJson.archived ?? false,
+            fork: repoJson.fork ?? false,
+            private: repoJson.private ?? false,
+            readme,
+            tree: [],
+            fetched_at: new Date().toISOString()
+          };
+
+          try {
+            const treeResp = await githubFetch<any>(
+              `/repos/${ownerName}/${repoName}/git/trees/HEAD?recursive=0`,
+              githubToken
+            );
+            result.tree = treeResp?.tree?.map((f: any) => f.path) ?? [];
+          } catch (err) {
+            console.warn('Could not fetch repo tree', err);
+            result.tree = [];
+          }
+
+          return result;
         }
-      }
-
-      const result = {
-        name: repoJson.name,
-        full_name: repoJson.full_name,
-        description: repoJson.description,
-        html_url: repoJson.html_url,
-        default_branch: repoJson.default_branch ?? 'main',
-        primary_language: repoJson.language ?? null,
-        languages: languages,
-        topics: repoJson.topics ?? [],
-        stars: repoJson.stargazers_count ?? 0,
-        forks: repoJson.forks_count ?? 0,
-        open_issues: repoJson.open_issues_count ?? 0,
-        last_pushed_at: repoJson.pushed_at,
-        created_at: repoJson.created_at,
-        updated_at: repoJson.updated_at,
-        license: repoJson.license?.name ?? null,
-        archived: repoJson.archived ?? false,
-        fork: repoJson.fork ?? false,
-        private: repoJson.private ?? false,
-        readme: readme,
-        // shallow top-level file tree for quick architecture overview
-        tree: [],
-        fetched_at: new Date().toISOString()
-      };
-
-      // fetch shallow file tree (recursive=0) for top-level file list
-      try {
-        const treeResp = await githubFetch<any>(`/repos/${ownerName}/${repoName}/git/trees/HEAD?recursive=0`, githubToken);
-        result.tree = treeResp?.tree?.map((f: any) => f.path) ?? [];
-      } catch (err) {
-        console.warn('Could not fetch repo tree', err);
-        result.tree = [];
-      }
+      );
 
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],

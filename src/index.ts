@@ -6,6 +6,7 @@ import { registerGitHubTools } from './github-tools';
 type Env = {
   GITHUB_USER: string;
   GITHUB_TOKEN?: string;
+  CACHE_KV: KVNamespace;
 };
 
 const app = new Hono<{ Bindings: Env }>();
@@ -18,7 +19,7 @@ app.all('/mcp', async (c) => {
   const GITHUB_USER = c.env.GITHUB_USER || 'Aneesh-382005';
   const GITHUB_TOKEN = c.env.GITHUB_TOKEN;
 
-  registerGitHubTools(server, GITHUB_USER, GITHUB_TOKEN);
+  registerGitHubTools(server, GITHUB_USER, GITHUB_TOKEN, c.env.CACHE_KV);
 
   const transport = new WebStandardStreamableHTTPServerTransport();
   await server.connect(transport);
