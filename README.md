@@ -1,49 +1,68 @@
 # folio.mcp
 
-Cloudflare Workers MCP server for personal GitHub summaries.
+Cloudflare Workers MCP server for portfolio and GitHub context.
+
+## What it does
+
+- `get_profile` returns basic portfolio/contact links.
+- `get_recent_work` returns recent public GitHub work from the last 12 months.
+- `get_repo_detail` returns a selected repo in summary, standard, or deep mode.
 
 ## Config
 
-- Edit `src/github-config.ts` to change your GitHub username.
-- Edit `src/github-config.ts` to change tool titles and descriptions.
+- Edit `src/config.ts` for profile links, GitHub username, and tool descriptions.
+- Edit `src/tools.ts` if you want to change tool schemas or output text.
+- Edit `src/github-client.ts` if you want to change GitHub fetching or caching.
+- Edit `src/profile-client.ts` if you want to change static profile data.
 
 ## Local dev
 
-The current tool, `get_recent_work`, can use `GITHUB_TOKEN` for fuller org visibility, but it also works without it.
-
-For seamless local dev, add your token to `.dev.vars` in the project root:
+Create `.dev.vars` in the project root for local secrets:
 
 ```bash
 GITHUB_TOKEN=your-token-here
 ```
 
-If you prefer, you can also export it in your shell for the current session only:
+You can also set it in your shell for one session:
 
 ```bash
 export GITHUB_TOKEN='your-token-here'
 ```
 
-Cloudflare production uses `wrangler secret put GITHUB_TOKEN`.
+Run locally with:
+
+```bash
+npm run dev
+```
+
+Call the worker:
+
+```bash
+curl -s -N -X POST http://127.0.0.1:8787/mcp \
+	-H "Content-Type: application/json" \
+	-H "Accept: application/json, text/event-stream" \
+	-d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_recent_work","arguments":{}}}'
+```
 
 ## Deploy
 
-Manual deploy:
+Set the production secret:
+
+```bash
+wrangler secret put GITHUB_TOKEN
+```
+
+Deploy:
 
 ```bash
 npm run deploy
 ```
 
-GitHub Actions deploys on pushes to `main` using `cloudflare/wrangler-action@v3`.
+GitHub Actions deploys on pushes to `main` with `cloudflare/wrangler-action@v3`.
 
 Required repository secrets:
 
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
 
-No non-secret Worker vars are required for the current setup.
-
-## Notes
-
-- The workflow runs `npm test` before deploy as a smoke check.
-- The workflow also hits the deployed Worker root path after deploy as a health check.
-- The Worker is deployed with Wrangler.
+No non-secret Worker vars are required.

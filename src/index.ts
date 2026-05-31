@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { registerGitHubTools } from './github-tools';
+import { registerTools } from './tools';
 
 type Env = {
   GITHUB_USER: string;
@@ -16,10 +16,11 @@ app.get('/', (c) => c.json({ status: 'ok' }));
 app.all('/mcp', async (c) => {
   const server = new McpServer({ name: 'folio-mcp', version: '0.0.0' });
 
-  const GITHUB_USER = c.env.GITHUB_USER || 'Aneesh-382005';
-  const GITHUB_TOKEN = c.env.GITHUB_TOKEN;
-
-  registerGitHubTools(server, GITHUB_USER, GITHUB_TOKEN, c.env.CACHE_KV);
+  registerTools(server, {
+    githubUser: c.env.GITHUB_USER,
+    githubToken: c.env.GITHUB_TOKEN,
+    cacheKv: c.env.CACHE_KV
+  });
 
   const transport = new WebStandardStreamableHTTPServerTransport();
   await server.connect(transport);
