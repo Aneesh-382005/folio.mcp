@@ -1,15 +1,27 @@
-const WORKER_ROOT = 'https://folio-mcp.aneesh382005.workers.dev';
-const TOOLS_ENDPOINT = `${WORKER_ROOT}/tools`;
+const MCP_URL = new URL('/mcp', window.location.origin).toString();
+const TOOLS_ENDPOINT = new URL('/tools', window.location.origin).toString();
 
 const toolStatus = document.getElementById('tools-status');
 const toolsGrid = document.getElementById('tools-grid');
-const copyButtons = document.querySelectorAll('[data-copy-text]');
+const copyButtons = document.querySelectorAll('[data-copy-text], [data-mcp-url-copy]');
 const tabButtons = document.querySelectorAll('[data-tab-target]');
 const tabPanels = document.querySelectorAll('.tab-panel');
 
 const tabsReadyClass = 'js-ready';
 
 document.documentElement.classList.add(tabsReadyClass);
+
+document.querySelectorAll('[data-mcp-url-copy]').forEach((button) => {
+  button.dataset.copyText = MCP_URL;
+});
+
+document.querySelectorAll('[data-mcp-url-text]').forEach((node) => {
+  node.textContent = MCP_URL;
+});
+
+document.querySelectorAll('[data-mcp-url-code]').forEach((node) => {
+  node.textContent = MCP_URL;
+});
 
 function formatExampleInput(exampleInput) {
   if (exampleInput == null) return null;

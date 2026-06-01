@@ -1,6 +1,6 @@
 # folio.mcp
 
-Cloudflare Workers MCP server for portfolio and GitHub context.
+Cloudflare Worker MCP server for portfolio, GitHub context, and the frontend site.
 
 ## What it does
 
@@ -18,9 +18,8 @@ Cloudflare Workers MCP server for portfolio and GitHub context.
 ## Frontend
 
 - The static site lives in `frontend/`.
-- It loads tool metadata from `GET /tools` on the Worker.
-- GitHub Actions deploys `frontend/` to Cloudflare Pages from `.github/workflows/deploy.yml`.
-- In Cloudflare Pages, create or select a project named `folio-mcp-frontend`.
+- The Worker serves the frontend and the MCP endpoint from the same hostname.
+- The UI loads tool metadata from `GET /tools` on the same origin.
 
 ## Local dev
 
@@ -59,13 +58,13 @@ Set the production secret:
 wrangler secret put GITHUB_TOKEN
 ```
 
-Deploy the Worker:
+Deploy the Worker and frontend together:
 
 ```bash
 npm run deploy
 ```
 
-GitHub Actions also deploys the frontend to Cloudflare Pages on pushes to `main`.
+GitHub Actions deploys the Worker on pushes to `main`.
 
 Required repository secrets:
 

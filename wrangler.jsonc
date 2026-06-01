@@ -20,7 +20,11 @@
 			"id": "c890a8aca03245e58b06389326c7c7a9",
 			"preview_id": "b51360f3d9ae48d6913af2e4b25b334d"
 		}
-	]
+	],
+	"assets": {
+		"directory": "./frontend",
+		"not_found_handling": "single-page-application"
+	},
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

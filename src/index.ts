@@ -7,6 +7,7 @@ type Env = {
   GITHUB_USER: string;
   GITHUB_TOKEN?: string;
   CACHE_KV: KVNamespace;
+  ASSETS: Fetcher;
 };
 
 const app = new Hono<{ Bindings: Env }>();
@@ -17,8 +18,6 @@ const publicCorsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Accept',
   'Cache-Control': 'public, max-age=300'
 };
-
-app.get('/', (c) => c.json({ status: 'ok' }));
 
 app.get('/tools', (c) =>
   c.json(
@@ -45,6 +44,34 @@ app.all('/mcp', async (c) => {
   const transport = new WebStandardStreamableHTTPServerTransport();
   await server.connect(transport);
   return transport.handleRequest(c.req.raw);
+});
+
+app.get('*', (c) => {
+  const assets = c.env?.ASSETS;
+
+  if (assets && typeof assets.fetch === 'function') {
+    return assets.fetch(c.req.raw);
+  }
+
+  return new Response(
+    `<!doctype html>
+<html>
+  <head>
+    <title>folio-mcp</title>
+  </head>
+  <body>
+    folio-mcp
+    <a href="/tools">/tools</a>
+    <a href="/mcp">/mcp</a>
+  </body>
+</html>`,
+    {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/html',
+      },
+    }
+  );
 });
 
 export default { fetch: app.fetch } satisfies ExportedHandler<Env>;

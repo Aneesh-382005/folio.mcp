@@ -20,8 +20,8 @@
           Connect once, ask anything. This MCP server surfaces profile links, recent GitHub work, and repo detail in a format that is fast to scan and easy to use.
         </p>
         <div class="hero-actions">
-          <button class="pill copy-pill" type="button" data-copy-text="https://folio-mcp.aneesh382005.workers.dev/mcp" aria-label="Copy MCP server URL">
-            <span class="pill-label">https://folio-mcp.aneesh382005.workers.dev/mcp</span>
+          <button class="pill copy-pill" type="button" data-mcp-url-copy aria-label="Copy MCP server URL">
+            <span class="pill-label" data-mcp-url-text></span>
             <span class="pill-state" aria-hidden="true">Copy</span>
           </button>
           <a class="button ghost" href="https://github.com/Aneesh-382005/folio.mcp" target="_blank" rel="noreferrer">View on GitHub</a>
@@ -74,13 +74,13 @@
                   <li>Look for <code>Apps</code> then <code>Settings</code>.</li>
                   <li>Under the <code>Apps</code> section, turn on <code>Developer mode</code>.</li>
                   <li>Name the server anything.</li>
-                  <li>Paste the server link: <code>https://folio-mcp.aneesh382005.workers.dev/mcp</code>.</li>
+                  <li>Paste the server link: <code data-mcp-url-code></code>.</li>
                   <li>Select <code>No auth</code> (mine doesn't require any).</li>
                   <li>Add tool.</li>
                 </ol>
                 <div class="snippet">
-                  <button class="copy-snippet" type="button" data-copy-text="https://folio-mcp.aneesh382005.workers.dev/mcp">Copy URL</button>
-                  <pre><code>https://folio-mcp.aneesh382005.workers.dev/mcp</code></pre>
+                  <button class="copy-snippet" type="button" data-mcp-url-copy>Copy URL</button>
+                  <pre><code data-mcp-url-code></code></pre>
                 </div>
               </div>
             </section>
@@ -89,12 +89,12 @@
               <div class="panel-card">
                 <p class="panel-label">Claude Desktop</p>
                 <ol class="steps">
-                  <li>Edit <code>claude_desktop_config.json</code>, add under <code>mcpServers</code>: <code>{"folio-mcp": {"type": "http", "url": "https://folio-mcp.aneesh382005.workers.dev/mcp"}}</code>.</li>
+                  <li>Edit <code>claude_desktop_config.json</code>, add under <code>mcpServers</code>: <code>{"folio-mcp": {"type": "http", "url": "</code><code><span data-mcp-url-text></span></code><code>"}}</code>.</li>
                   <li>Restart Claude Desktop.</li>
                 </ol>
                 <div class="snippet">
-                  <button class="copy-snippet" type="button" data-copy-text='{"folio-mcp": {"type": "http", "url": "https://folio-mcp.aneesh382005.workers.dev/mcp"}}'>Copy snippet</button>
-                  <pre><code>{"folio-mcp": {"type": "http", "url": "https://folio-mcp.aneesh382005.workers.dev/mcp"}}</code></pre>
+                  <button class="copy-snippet" type="button" data-mcp-url-copy>Copy snippet</button>
+                  <pre><code>{"folio-mcp": {"type": "http", "url": "</code><code><span data-mcp-url-text></span></code><code>"}}</code></pre>
                 </div>
               </div>
             </section>
@@ -104,13 +104,13 @@
                 <p class="panel-label">Claude.ai</p>
                 <ol class="steps">
                   <li>On the left sidebar, select <code>Customize</code>, and then <code>Connectors</code> and the plus sign <code>'+'</code> Add connector.</li>
-                  <li>Paste <code>https://folio-mcp.aneesh382005.workers.dev/mcp</code>.</li>
+                  <li>Paste <code data-mcp-url-code></code>.</li>
                   <li>Name it <code>folio-mcp</code>.</li>
                   <li>Save.</li>
                 </ol>
                 <div class="snippet">
-                  <button class="copy-snippet" type="button" data-copy-text="https://folio-mcp.aneesh382005.workers.dev/mcp">Copy URL</button>
-                  <pre><code>https://folio-mcp.aneesh382005.workers.dev/mcp</code></pre>
+                  <button class="copy-snippet" type="button" data-mcp-url-copy>Copy URL</button>
+                  <pre><code data-mcp-url-code></code></pre>
                 </div>
               </div>
             </section>
@@ -121,12 +121,12 @@
                 <ol class="steps">
                   <li>Go to Settings → MCP → Add server.</li>
                   <li>Type: HTTP.</li>
-                  <li>URL: <code>https://folio-mcp.aneesh382005.workers.dev/mcp</code>.</li>
+                  <li>URL: <code data-mcp-url-code></code>.</li>
                   <li>Save and reload window.</li>
                 </ol>
                 <div class="snippet">
-                  <button class="copy-snippet" type="button" data-copy-text="https://folio-mcp.aneesh382005.workers.dev/mcp">Copy URL</button>
-                  <pre><code>https://folio-mcp.aneesh382005.workers.dev/mcp</code></pre>
+                  <button class="copy-snippet" type="button" data-mcp-url-copy>Copy URL</button>
+                  <pre><code data-mcp-url-code></code></pre>
                 </div>
               </div>
             </section>
@@ -136,12 +136,12 @@
                 <p class="panel-label">Windsurf</p>
                 <ol class="steps">
                   <li>Go to Windsurf Settings → Cascade → MCP Servers → Add.</li>
-                  <li>URL: <code>https://folio-mcp.aneesh382005.workers.dev/mcp</code>.</li>
+                  <li>URL: <code data-mcp-url-code></code>.</li>
                   <li>Save.</li>
                 </ol>
                 <div class="snippet">
-                  <button class="copy-snippet" type="button" data-copy-text="https://folio-mcp.aneesh382005.workers.dev/mcp">Copy URL</button>
-                  <pre><code>https://folio-mcp.aneesh382005.workers.dev/mcp</code></pre>
+                  <button class="copy-snippet" type="button" data-mcp-url-copy>Copy URL</button>
+                  <pre><code data-mcp-url-code></code></pre>
                 </div>
               </div>
             </section>
