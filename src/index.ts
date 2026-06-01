@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { registerTools } from './tools';
+import { getToolCatalog, registerTools } from './tools';
 
 type Env = {
   GITHUB_USER: string;
@@ -11,7 +11,27 @@ type Env = {
 
 const app = new Hono<{ Bindings: Env }>();
 
+const publicCorsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Accept',
+  'Cache-Control': 'public, max-age=300'
+};
+
 app.get('/', (c) => c.json({ status: 'ok' }));
+
+app.get('/tools', (c) =>
+  c.json(
+    {
+      generated_at: new Date().toISOString(),
+      tools: getToolCatalog()
+    },
+    200,
+    publicCorsHeaders
+  )
+);
+
+app.options('/tools', () => new Response(null, { status: 204, headers: publicCorsHeaders }));
 
 app.all('/mcp', async (c) => {
   const server = new McpServer({ name: 'folio-mcp', version: '0.0.0' });

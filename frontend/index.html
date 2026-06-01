@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0f14" />
+    <meta
+      name="description"
+      content="folio-mcp is a Cloudflare Worker MCP server that gives LLMs context on Aneesh Grover's profile, recent GitHub work, and repo details."
+    />
+    <title>folio-mcp</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero section-block">
+        <p class="eyebrow">folio-mcp</p>
+        <h1>Give any LLM full context on my work.</h1>
+        <p class="lede">
+          Connect once, ask anything. This MCP server surfaces profile links, recent GitHub work, and repo detail in a format that is fast to scan and easy to use.
+        </p>
+        <div class="hero-actions">
+          <button class="pill copy-pill" type="button" data-copy-text="https://folio-mcp.aneesh382005.workers.dev/mcp" aria-label="Copy MCP server URL">
+            <span class="pill-label">https://folio-mcp.aneesh382005.workers.dev/mcp</span>
+            <span class="pill-state" aria-hidden="true">Copy</span>
+          </button>
+          <a class="button ghost" href="https://github.com/Aneesh-382005/folio.mcp" target="_blank" rel="noreferrer">View on GitHub</a>
+        </div>
+      </section>
+
+      <section class="section-block">
+        <h2>What this is</h2>
+        <p>
+          Model Context Protocol (MCP) is an open standard that lets AI assistants connect to external tools and data sources in a consistent way. Instead of building a separate integration for every AI app, developers can create one MCP server that works across any MCP-compatible client.
+        </p>
+      </section>
+
+      <section class="section-block" id="tools">
+        <div class="section-head">
+          <div>
+            <h2>Tools</h2>
+            <p>Loaded from the Worker at <code>/tools</code>.</p>
+          </div>
+          <div class="status" id="tools-status">Loading tools…</div>
+        </div>
+        <div class="tools-grid" id="tools-grid" aria-live="polite"></div>
+        <noscript>
+          <p class="fallback">JavaScript is disabled, so the tools list cannot load here.</p>
+        </noscript>
+      </section>
+
+      <section class="section-block">
+        <div class="section-head connect-head">
+          <div>
+            <h2>Connect</h2>
+            <p>Copy the exact setup for the client you use.</p>
+          </div>
+        </div>
+
+        <div class="tabs" data-tabs>
+          <div class="tab-list" role="tablist" aria-label="LLM clients">
+            <button class="tab-button is-active" type="button" role="tab" aria-selected="true" aria-controls="panel-chatgpt" data-tab-target="panel-chatgpt">ChatGPT</button>
+            <button class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-claude-desktop" data-tab-target="panel-claude-desktop">Claude Desktop</button>
+            <button class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-claude-ai" data-tab-target="panel-claude-ai">Claude.ai</button>
+            <button class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-cursor" data-tab-target="panel-cursor">Cursor</button>
+            <button class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-windsurf" data-tab-target="panel-windsurf">Windsurf</button>
+          </div>
+
+          <div class="tab-panels">
+            <section class="tab-panel is-active" id="panel-chatgpt" role="tabpanel" aria-labelledby="ChatGPT">
+              <div class="panel-card">
+                <p class="panel-label">ChatGPT</p>
+                <ol class="steps">
+                  <li>Look for <code>Apps</code> then <code>Settings</code>.</li>
+                  <li>Under the <code>Apps</code> section, turn on <code>Developer mode</code>.</li>
+                  <li>Name the server anything.</li>
+                  <li>Paste the server link: <code>https://folio-mcp.aneesh382005.workers.dev/mcp</code>.</li>
+                  <li>Select <code>No auth</code> (mine doesn't require any).</li>
+                  <li>Add tool.</li>
+                </ol>
+                <div class="snippet">
+                  <button class="copy-snippet" type="button" data-copy-text="https://folio-mcp.aneesh382005.workers.dev/mcp">Copy URL</button>
+                  <pre><code>https://folio-mcp.aneesh382005.workers.dev/mcp</code></pre>
+                </div>
+              </div>
+            </section>
+
+            <section class="tab-panel" id="panel-claude-desktop" role="tabpanel" aria-labelledby="Claude Desktop">
+              <div class="panel-card">
+                <p class="panel-label">Claude Desktop</p>
+                <ol class="steps">
+                  <li>Edit <code>claude_desktop_config.json</code>, add under <code>mcpServers</code>: <code>{"folio-mcp": {"type": "http", "url": "https://folio-mcp.aneesh382005.workers.dev/mcp"}}</code>.</li>
+                  <li>Restart Claude Desktop.</li>
+                </ol>
+                <div class="snippet">
+                  <button class="copy-snippet" type="button" data-copy-text='{"folio-mcp": {"type": "http", "url": "https://folio-mcp.aneesh382005.workers.dev/mcp"}}'>Copy snippet</button>
+                  <pre><code>{"folio-mcp": {"type": "http", "url": "https://folio-mcp.aneesh382005.workers.dev/mcp"}}</code></pre>
+                </div>
+              </div>
+            </section>
+
+            <section class="tab-panel" id="panel-claude-ai" role="tabpanel" aria-labelledby="Claude.ai">
+              <div class="panel-card">
+                <p class="panel-label">Claude.ai</p>
+                <ol class="steps">
+                  <li>On the left sidebar, select <code>Customize</code>, and then <code>Connectors</code> and the plus sign <code>'+'</code> Add connector.</li>
+                  <li>Paste <code>https://folio-mcp.aneesh382005.workers.dev/mcp</code>.</li>
+                  <li>Name it <code>folio-mcp</code>.</li>
+                  <li>Save.</li>
+                </ol>
+                <div class="snippet">
+                  <button class="copy-snippet" type="button" data-copy-text="https://folio-mcp.aneesh382005.workers.dev/mcp">Copy URL</button>
+                  <pre><code>https://folio-mcp.aneesh382005.workers.dev/mcp</code></pre>
+                </div>
+              </div>
+            </section>
+
+            <section class="tab-panel" id="panel-cursor" role="tabpanel" aria-labelledby="Cursor">
+              <div class="panel-card">
+                <p class="panel-label">Cursor</p>
+                <ol class="steps">
+                  <li>Go to Settings → MCP → Add server.</li>
+                  <li>Type: HTTP.</li>
+                  <li>URL: <code>https://folio-mcp.aneesh382005.workers.dev/mcp</code>.</li>
+                  <li>Save and reload window.</li>
+                </ol>
+                <div class="snippet">
+                  <button class="copy-snippet" type="button" data-copy-text="https://folio-mcp.aneesh382005.workers.dev/mcp">Copy URL</button>
+                  <pre><code>https://folio-mcp.aneesh382005.workers.dev/mcp</code></pre>
+                </div>
+              </div>
+            </section>
+
+            <section class="tab-panel" id="panel-windsurf" role="tabpanel" aria-labelledby="Windsurf">
+              <div class="panel-card">
+                <p class="panel-label">Windsurf</p>
+                <ol class="steps">
+                  <li>Go to Windsurf Settings → Cascade → MCP Servers → Add.</li>
+                  <li>URL: <code>https://folio-mcp.aneesh382005.workers.dev/mcp</code>.</li>
+                  <li>Save.</li>
+                </ol>
+                <div class="snippet">
+                  <button class="copy-snippet" type="button" data-copy-text="https://folio-mcp.aneesh382005.workers.dev/mcp">Copy URL</button>
+                  <pre><code>https://folio-mcp.aneesh382005.workers.dev/mcp</code></pre>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <a href="https://www.aneeshgrover.me/" target="_blank" rel="noreferrer">aneeshgrover.me</a>
+        <a href="https://github.com/Aneesh-382005/folio.mcp" target="_blank" rel="noreferrer">GitHub</a>
+      </footer>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

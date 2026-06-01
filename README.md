@@ -15,6 +15,13 @@ Cloudflare Workers MCP server for portfolio and GitHub context.
 - Edit `src/github-client.ts` if you want to change GitHub fetching or caching.
 - Edit `src/profile-client.ts` if you want to change static profile data.
 
+## Frontend
+
+- The static site lives in `frontend/`.
+- It loads tool metadata from `GET /tools` on the Worker.
+- GitHub Actions deploys `frontend/` to Cloudflare Pages from `.github/workflows/deploy.yml`.
+- In Cloudflare Pages, create or select a project named `folio-mcp-frontend`.
+
 ## Local dev
 
 Create `.dev.vars` in the project root for local secrets:
@@ -52,13 +59,13 @@ Set the production secret:
 wrangler secret put GITHUB_TOKEN
 ```
 
-Deploy:
+Deploy the Worker:
 
 ```bash
 npm run deploy
 ```
 
-GitHub Actions deploys on pushes to `main` with `cloudflare/wrangler-action@v3`.
+GitHub Actions also deploys the frontend to Cloudflare Pages on pushes to `main`.
 
 Required repository secrets:
 

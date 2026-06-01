@@ -10,6 +10,13 @@ type RegisterToolsOptions = {
   cacheKv?: KVNamespace;
 };
 
+export function getToolCatalog() {
+  return Object.entries(appConfig.tools).map(([name, tool]) => ({
+    name,
+    ...tool
+  }));
+}
+
 function summarizeRecentWork(result: Awaited<ReturnType<ReturnType<typeof createGitHubClient>['getRecentWork']>>) {
   const topRepos = result.recentWork.slice(0, 3).map((repo) => repo.full_name ?? repo.name).join(', ');
   return `${appConfig.github.displayName} recent work (${result.recentWork.length} repos). Top: ${topRepos || 'none found'}.`;
