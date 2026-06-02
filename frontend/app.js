@@ -55,7 +55,7 @@ function renderTools(tools) {
           <div class="tool-meta">
             <div class="meta-block">
               <label>Returns</label>
-              <p>${escapeHtml(tool.returns || '—')}</p>
+              <p>${escapeHtml(tool.returns || 'n/a')}</p>
             </div>
             ${
               parameters.length
@@ -64,7 +64,7 @@ function renderTools(tools) {
                 <label>Parameters</label>
                 <ul>
                   ${parameters
-                    .map((parameter) => `<li><strong>${escapeHtml(parameter.name)}</strong> — ${escapeHtml(parameter.description || '')}</li>`)
+                    .map((parameter) => `<li><strong>${escapeHtml(parameter.name)}</strong>: ${escapeHtml(parameter.description || '')}</li>`)
                     .join('')}
                 </ul>
               </div>
