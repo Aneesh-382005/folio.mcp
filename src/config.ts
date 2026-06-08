@@ -3,8 +3,13 @@ const displayName = 'Aneesh Grover';
 const portfolioUrl = 'https://www.aneeshgrover.me/';
 const resumeUrl = 'https://www.aneeshgrover.me/Aneesh_Grover_Resume.pdf';
 const linkedinUrl = 'https://www.linkedin.com/in/aneesh-grover/';
+const siteOrigins = ['https://mcp.aneeshgrover.me', 'https://www.aneeshgrover.me'] as const;
 
 export const appConfig = {
+  cors: {
+    origins: siteOrigins,
+    localhostOriginPattern: /^http:\/\/localhost:\d+$/
+  },
   github: {
     username: githubUsername,
     displayName,

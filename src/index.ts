@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
+import { appConfig } from './config';
 import { getToolCatalog, registerTools } from './tools';
 
 type Env = {
@@ -12,25 +14,26 @@ type Env = {
 
 const app = new Hono<{ Bindings: Env }>();
 
-const publicCorsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Accept',
-  'Cache-Control': 'public, max-age=300'
-};
-
-app.get('/tools', (c) =>
-  c.json(
-    {
-      generated_at: new Date().toISOString(),
-      tools: getToolCatalog()
+// CORS: allow two production origins and any localhost port for local dev
+app.use('*',
+  cors({
+    origin: (origin) => {
+      if (!origin) return null;
+      if (appConfig.cors.origins.includes(origin as (typeof appConfig.cors.origins)[number])) return origin;
+      if (appConfig.cors.localhostOriginPattern.test(origin)) return origin;
+      return null;
     },
-    200,
-    publicCorsHeaders
-  )
+    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Accept']
+  })
 );
 
-app.options('/tools', () => new Response(null, { status: 204, headers: publicCorsHeaders }));
+app.get('/tools', (c) =>
+  c.json({
+    generated_at: new Date().toISOString(),
+    tools: getToolCatalog()
+  })
+);
 
 app.all('/mcp', async (c) => {
   const server = new McpServer({ name: 'folio-mcp', version: '0.0.0' });
