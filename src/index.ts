@@ -8,6 +8,7 @@ import { getToolCatalog, registerTools } from './tools';
 type Env = {
   GITHUB_USER: string;
   GITHUB_TOKEN?: string;
+  RESEND_API_KEY?: string;
   CACHE_KV: KVNamespace;
   ASSETS: Fetcher;
 };
@@ -41,7 +42,9 @@ app.all('/mcp', async (c) => {
   registerTools(server, {
     githubUser: c.env.GITHUB_USER,
     githubToken: c.env.GITHUB_TOKEN,
-    cacheKv: c.env.CACHE_KV
+    cacheKv: c.env.CACHE_KV,
+    resendApiKey: c.env.RESEND_API_KEY,
+    request: c.req.raw
   });
 
   const transport = new WebStandardStreamableHTTPServerTransport();

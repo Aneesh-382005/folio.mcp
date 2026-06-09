@@ -1,6 +1,7 @@
 import * as z from 'zod/v4';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { appConfig } from './config';
+import { registerContactTools } from './contact-tools.js';
 import { createGitHubClient } from './github-client';
 import { createProfileClient } from './profile-client';
 
@@ -8,6 +9,8 @@ type RegisterToolsOptions = {
   githubUser?: string;
   githubToken?: string;
   cacheKv?: KVNamespace;
+  resendApiKey?: string;
+  request?: Request;
 };
 
 export function getToolCatalog() {
@@ -56,6 +59,14 @@ export function registerTools(server: McpServer, options: RegisterToolsOptions =
       structuredContent: result
     };
   });
+
+  if (options.request) {
+    registerContactTools(server, {
+      cacheKv: options.cacheKv,
+      request: options.request,
+      resendApiKey: options.resendApiKey
+    });
+  }
 
   server.tool('get_recent_work', appConfig.tools.getRecentWork.description, async () => {
     const result = await github.getRecentWork();

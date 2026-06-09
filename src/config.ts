@@ -10,6 +10,10 @@ export const appConfig = {
     origins: siteOrigins,
     localhostOriginPattern: /^http:\/\/localhost:\d+$/
   },
+  contact: {
+    inboxEmail: 'aneesh.grover03@gmail.com',
+    resendFrom: 'folio.mcp <onboarding@resend.dev>'
+  },
   github: {
     username: githubUsername,
     displayName,
@@ -73,6 +77,36 @@ export const appConfig = {
         {
           name: 'max_tree_entries',
           description: 'Optional file tree size cap.'
+        }
+      ]
+    },
+    sendMessage: {
+      title: 'Send Message',
+      description:
+        'Use this tool only when the user explicitly wants to send Aneesh a message from folio.mcp. Collect sender_name and message, plus optional context. Ask for reply_to_email only if the human intentionally wants a response by email. The message body must be 1000 characters or fewer, and this tool is for short contact requests, collaboration notes, or introductions.',
+      returns: 'A success confirmation when the email is sent, or a graceful MCP error result when rate limited or when Resend fails.',
+      exampleInput: {
+        sender_name: 'Jordan Lee',
+        message: 'I would like to talk about a systems project.',
+        context: 'Open to a quick collaboration chat next week.',
+        reply_to_email: 'jordan@example.com'
+      },
+      parameters: [
+        {
+          name: 'sender_name',
+          description: 'Who is reaching out.'
+        },
+        {
+          name: 'message',
+          description: 'The message body, up to 1000 characters.'
+        },
+        {
+          name: 'context',
+          description: 'Optional context for what they want to discuss.'
+        },
+        {
+          name: 'reply_to_email',
+          description: 'Optional email for reply. Only provide if the user explicitly wants an email response.'
         }
       ]
     }
