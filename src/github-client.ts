@@ -189,44 +189,38 @@ async function fetchRepoDetail(options: RepoDetailOptions, githubToken?: string)
 
   const repoJson: any = await repoResp.json();
 
-  let languages: Record<string, number> | null = null;
-  if (includeLanguages) {
-    try {
-      languages = await githubFetch<Record<string, number>>(`/repos/${ownerName}/${repoName}/languages`, githubToken);
-    } catch (err) {
-      console.warn('Could not fetch languages', err);
-    }
-  }
+  const [languages, readme, tree] = await Promise.all([
+    includeLanguages
+      ? githubFetch<Record<string, number>>(`/repos/${ownerName}/${repoName}/languages`, githubToken)
+          .catch((err) => { console.warn('Could not fetch languages', err); return null; })
+      : Promise.resolve(null),
 
-  let readme: { text?: string; encoding?: string } | null = null;
-  if (includeReadme) {
-    try {
-      const rawHeaders = new Headers(GITHUB_HEADERS);
-      if (githubToken) rawHeaders.set('Authorization', `Bearer ${githubToken}`);
-      rawHeaders.set('Accept', 'application/vnd.github.v3.raw');
+    includeReadme
+      ? (async () => {
+          const rawHeaders = new Headers(GITHUB_HEADERS);
+          if (githubToken) rawHeaders.set('Authorization', `Bearer ${githubToken}`);
+          rawHeaders.set('Accept', 'application/vnd.github.v3.raw');
+          const rawResp = await fetch(`${GITHUB_API_BASE}/repos/${ownerName}/${repoName}/readme`, { headers: rawHeaders });
+          if (rawResp.status === 404) return null;
+          if (!rawResp.ok) throw new Error(`README fetch failed: ${rawResp.status}`);
+          const text = await rawResp.text();
+          return (typeof maxReadmeChars === 'number' && maxReadmeChars > 0 && text.length > maxReadmeChars)
+            ? { text: `${text.slice(0, maxReadmeChars)}\n\n[truncated at ${maxReadmeChars} characters]` }
+            : { text };
+        })().catch((err) => { console.warn('Could not fetch README', err); return null; })
+      : Promise.resolve(null),
 
-      const rawResp = await fetch(`${GITHUB_API_BASE}/repos/${ownerName}/${repoName}/readme`, {
-        headers: rawHeaders
-      });
+    includeTree
+      ? githubFetch<any>(`/repos/${ownerName}/${repoName}/git/trees/HEAD?recursive=0`, githubToken)
+          .then((treeResp) => {
+            const paths = treeResp?.tree?.map((f: any) => f.path) ?? [];
+            return (typeof maxTreeEntries === 'number' && maxTreeEntries > 0) ? paths.slice(0, maxTreeEntries) : paths;
+          })
+          .catch((err) => { console.warn('Could not fetch repo tree', err); return [] as string[]; })
+      : Promise.resolve([] as string[]),
+  ]);
 
-      if (rawResp.status === 404) {
-        readme = null;
-      } else if (!rawResp.ok) {
-        throw new Error(`README fetch failed: ${rawResp.status}`);
-      } else {
-        const text = await rawResp.text();
-        if (typeof maxReadmeChars === 'number' && maxReadmeChars > 0 && text.length > maxReadmeChars) {
-          readme = { text: `${text.slice(0, maxReadmeChars)}\n\n[truncated at ${maxReadmeChars} characters]` };
-        } else {
-          readme = { text };
-        }
-      }
-    } catch (err) {
-      console.warn('Could not fetch README', err);
-    }
-  }
-
-  const result: RepoDetail = {
+  return {
     name: repoJson.name,
     full_name: repoJson.full_name,
     description: repoJson.description,
@@ -247,24 +241,9 @@ async function fetchRepoDetail(options: RepoDetailOptions, githubToken?: string)
     fork: repoJson.fork ?? false,
     private: repoJson.private ?? false,
     readme,
-    tree: [],
+    tree: tree ?? [],
     fetched_at: new Date().toISOString()
   };
-
-  if (includeTree) {
-    try {
-      const treeResp = await githubFetch<any>(`/repos/${ownerName}/${repoName}/git/trees/HEAD?recursive=0`, githubToken);
-      const paths = treeResp?.tree?.map((f: any) => f.path) ?? [];
-      result.tree = typeof maxTreeEntries === 'number' && maxTreeEntries > 0 ? paths.slice(0, maxTreeEntries) : paths;
-    } catch (err) {
-      console.warn('Could not fetch repo tree', err);
-      result.tree = [];
-    }
-  } else {
-    result.tree = [];
-  }
-
-  return result;
 }
 
 export function createGitHubClient(options: GitHubClientOptions) {
