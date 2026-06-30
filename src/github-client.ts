@@ -112,27 +112,19 @@ function b64Decode(input: string) {
 async function fetchRecentWork(username: string, githubToken?: string) {
   const twelveMonthsAgo = monthsAgoDate(12);
 
-  let owned: GitHubRepo[] = [];
-  try {
-    owned = await githubFetch<GitHubRepo[]>(`/users/${username}/repos?type=owner&per_page=100&sort=updated`, githubToken);
-  } catch (error) {
-    console.warn('Could not fetch owned repos', error);
-  }
+  const [owned, orgs] = await Promise.all([
+    githubFetch<GitHubRepo[]>(`/users/${username}/repos?type=owner&per_page=100&sort=updated`, githubToken)
+      .catch((err) => { console.warn('Could not fetch owned repos', err); return [] as GitHubRepo[]; }),
+    githubFetch<any[]>(`/users/${username}/orgs`, githubToken)
+      .catch((err) => { console.warn('Could not fetch user orgs', err); return [] as any[]; }),
+  ]);
 
-  let orgRepos: GitHubRepo[] = [];
-  try {
-    const orgs = await githubFetch<any[]>(`/users/${username}/orgs`, githubToken);
-    for (const org of orgs) {
-      try {
-        const repos = await githubFetch<GitHubRepo[]>(`/orgs/${org.login}/repos?type=public&per_page=100&sort=updated`, githubToken);
-        orgRepos = orgRepos.concat(repos.map((r) => ({ ...r })));
-      } catch (err) {
-        console.warn(`Could not fetch repos for org ${org.login}`, err);
-      }
-    }
-  } catch (error) {
-    console.warn('Could not fetch user orgs', error);
-  }
+  const orgRepos = (await Promise.all(
+    orgs.map((org) =>
+      githubFetch<GitHubRepo[]>(`/orgs/${org.login}/repos?type=public&per_page=100&sort=updated`, githubToken)
+        .catch((err) => { console.warn(`Could not fetch repos for org ${org.login}`, err); return [] as GitHubRepo[]; })
+    )
+  )).flat();
 
   const combinedMap = new Map<string, GitHubRepo>();
   const pushRepo = (repo: GitHubRepo) => {
