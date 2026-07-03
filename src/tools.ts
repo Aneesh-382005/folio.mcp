@@ -13,6 +13,28 @@ type RegisterToolsOptions = {
   request?: Request;
 };
 
+const repoDetailSchema = {
+  repo: z.string().min(1).describe('Repository name or owner/name, for example folio-mcp or Aneesh-382005/folio-mcp'),
+  owner: z.string().optional().describe('Optional owner or organization when repo is just a short name'),
+  detail_level: z
+    .enum(['summary', 'standard', 'deep'])
+    .optional()
+    .default('summary')
+    .describe('summary = metadata only; standard = metadata + languages + tree; deep = metadata + languages + tree + README'),
+  max_readme_chars: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('Optional maximum number of README characters to return when detail_level is deep'),
+  max_tree_entries: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('Optional maximum number of file paths to return when detail_level includes the tree')
+};
+
 export function getToolCatalog() {
   return Object.entries(appConfig.tools).map(([name, tool]) => ({
     name,
@@ -79,27 +101,7 @@ export function registerTools(server: McpServer, options: RegisterToolsOptions =
   server.tool(
     'get_repo_detail',
     appConfig.tools.getRepoDetail.description,
-    {
-      repo: z.string().min(1).describe('Repository name or owner/name, for example folio-mcp or Aneesh-382005/folio-mcp'),
-      owner: z.string().optional().describe('Optional owner or organization when repo is just a short name'),
-      detail_level: z
-        .enum(['summary', 'standard', 'deep'])
-        .optional()
-        .default('summary')
-        .describe('summary = metadata only; standard = metadata + languages + tree; deep = metadata + languages + tree + README'),
-      max_readme_chars: z
-        .number()
-        .int()
-        .positive()
-        .optional()
-        .describe('Optional maximum number of README characters to return when detail_level is deep'),
-      max_tree_entries: z
-        .number()
-        .int()
-        .positive()
-        .optional()
-        .describe('Optional maximum number of file paths to return when detail_level includes the tree')
-    },
+    repoDetailSchema,
     async ({ repo, owner, detail_level, max_readme_chars, max_tree_entries }) => {
       const result = await github.getRepoDetail({
         repo,

@@ -103,12 +103,6 @@ function toRepoDetail(repo: GitHubRepo): Omit<RepoDetail, 'html_url' | 'default_
   };
 }
 
-function b64Decode(input: string) {
-  if (typeof atob === 'function') return atob(input);
-  if (typeof Buffer !== 'undefined') return Buffer.from(input, 'base64').toString('utf8');
-  throw new Error('No base64 decoder available');
-}
-
 async function fetchRecentWork(username: string, githubToken?: string) {
   const twelveMonthsAgo = monthsAgoDate(12);
 
