@@ -129,10 +129,8 @@ async function fetchRecentWork(username: string, githubToken?: string) {
   for (const repo of owned) pushRepo(repo);
   for (const repo of orgRepos) pushRepo(repo);
 
-  const twelveMonthsAgoISO = twelveMonthsAgo.toISOString();
-
   const recent = Array.from(combinedMap.values())
-    .filter((repo) => !repo.fork && Boolean(repo.description?.trim()) && new Date(repo.pushed_at) >= new Date(twelveMonthsAgoISO))
+    .filter((repo) => !repo.fork && Boolean(repo.description?.trim()) && new Date(repo.pushed_at) >= twelveMonthsAgo)
     .map((repo) => ({
       ...toRepoDetail(repo),
       forks: 0,

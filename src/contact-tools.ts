@@ -7,6 +7,18 @@ const rateLimitKeyPrefix = 'ratelimit:send:';
 const rateLimitWindowSeconds = 24 * 60 * 60;
 const rateLimitMaxSends = 3;
 
+const sendMessageSchema = {
+  sender_name: z.string().min(1).max(120).describe('Who is reaching out.'),
+  message: z.string().min(1).max(1000).describe('The message body, up to 1000 characters.'),
+  context: z.string().max(500).optional().describe('Optional context for what they want to discuss.'),
+  reply_to_email: z
+    .string()
+    .email()
+    .max(320)
+    .optional()
+    .describe('Optional email to reply to. Provide only if the human explicitly wants a response by email.')
+};
+
 type RegisterContactToolsOptions = {
   cacheKv?: KVNamespace;
   resendApiKey?: string;
@@ -50,13 +62,6 @@ function escapeHtml(value: string) {
 export function getClientIp(request: Request) {
   const connectingIp = request.headers.get('cf-connecting-ip');
   if (connectingIp) return connectingIp.trim();
-
-  const forwardedFor = request.headers.get('x-forwarded-for');
-  if (forwardedFor) {
-    const forwardedIp = forwardedFor.split(',')[0]?.trim();
-    if (forwardedIp) return forwardedIp;
-  }
-
   return 'unknown';
 }
 
@@ -233,17 +238,7 @@ export function registerContactTools(server: McpServer, options: RegisterContact
   server.tool(
     'send_message',
     appConfig.tools.sendMessage.description,
-    {
-      sender_name: z.string().min(1).max(120).describe('Who is reaching out.'),
-      message: z.string().min(1).max(1000).describe('The message body, up to 1000 characters.'),
-      context: z.string().optional().describe('Optional context for what they want to discuss.'),
-      reply_to_email: z
-        .string()
-        .email()
-        .max(320)
-        .optional()
-        .describe('Optional email to reply to. Provide only if the human explicitly wants a response by email.')
-    },
+    sendMessageSchema,
     async ({ sender_name, message, context, reply_to_email }) =>
       sendMessageViaResend(
         {
