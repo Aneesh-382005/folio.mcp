@@ -36,6 +36,8 @@ app.get('/tools', (c) =>
   })
 );
 
+app.get('/mcp', (c) => c.json({ name: 'folio-mcp', version: '0.0.0', protocol: 'mcp' }));
+
 app.all('/mcp', async (c) => {
   const server = new McpServer({ name: 'folio-mcp', version: '0.0.0' });
 
