@@ -12,6 +12,7 @@ const REPO_DETAIL_TTL_SECONDS = 60 * 60;
 type GitHubEvent = {
   type: string;
   repo: { name: string };
+  payload?: { action?: string };
 };
 
 type GitHubRepo = {
@@ -158,11 +159,20 @@ async function fetchRecentWork(username: string, githubToken?: string) {
 
   const externalActivityMap = new Map<string, Set<string>>();
   for (const event of events) {
-    if (event.type !== 'PushEvent' && event.type !== 'PullRequestEvent' && event.type !== 'IssueCommentEvent') continue;
+    let tag: string;
+    if (event.type === 'PushEvent') {
+      tag = 'push';
+    } else if (event.type === 'PullRequestEvent') {
+      if (event.payload?.action !== 'merged') continue;
+      tag = 'merged_pr';
+    } else if (event.type === 'IssueCommentEvent') {
+      tag = 'issue_comment';
+    } else {
+      continue;
+    }
     const name = event.repo.name;
     if (combinedMap.has(name)) continue;
     if (!externalActivityMap.has(name)) externalActivityMap.set(name, new Set());
-    const tag = event.type === 'PushEvent' ? 'push' : event.type === 'PullRequestEvent' ? 'pull_request' : 'issue_comment';
     externalActivityMap.get(name)!.add(tag);
   }
 
