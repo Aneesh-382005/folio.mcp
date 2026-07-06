@@ -9,6 +9,11 @@ const GITHUB_HEADERS: HeadersInit = {
 const RECENT_WORK_TTL_SECONDS = 15 * 60;
 const REPO_DETAIL_TTL_SECONDS = 60 * 60;
 
+type GitHubEvent = {
+  type: string;
+  repo: { name: string };
+};
+
 type GitHubRepo = {
   name: string;
   full_name?: string;
@@ -17,6 +22,7 @@ type GitHubRepo = {
   topics?: string[];
   stargazers_count: number;
   pushed_at: string;
+  created_at: string;
   fork: boolean;
 };
 
@@ -106,11 +112,13 @@ function toRepoDetail(repo: GitHubRepo): Omit<RepoDetail, 'html_url' | 'default_
 async function fetchRecentWork(username: string, githubToken?: string) {
   const twelveMonthsAgo = monthsAgoDate(12);
 
-  const [owned, orgs] = await Promise.all([
+  const [owned, orgs, events] = await Promise.all([
     githubFetch<GitHubRepo[]>(`/users/${username}/repos?type=owner&per_page=100&sort=updated`, githubToken)
       .catch((err) => { console.warn('Could not fetch owned repos', err); return [] as GitHubRepo[]; }),
     githubFetch<any[]>(`/users/${username}/orgs`, githubToken)
       .catch((err) => { console.warn('Could not fetch user orgs', err); return [] as any[]; }),
+    githubFetch<GitHubEvent[]>(`/users/${username}/events?per_page=100`, githubToken)
+      .catch(() => [] as GitHubEvent[]),
   ]);
 
   const orgRepos = (await Promise.all(
@@ -130,7 +138,15 @@ async function fetchRecentWork(username: string, githubToken?: string) {
   for (const repo of orgRepos) pushRepo(repo);
 
   const recent = Array.from(combinedMap.values())
-    .filter((repo) => !repo.fork && Boolean(repo.description?.trim()) && new Date(repo.pushed_at) >= twelveMonthsAgo)
+    .filter((repo) => {
+      if (!Boolean(repo.description?.trim())) return false;
+      if (new Date(repo.pushed_at) < twelveMonthsAgo) return false;
+      if (repo.fork) {
+        const age = new Date(repo.pushed_at).getTime() - new Date(repo.created_at).getTime();
+        if (age < 24 * 60 * 60 * 1000) return false;
+      }
+      return true;
+    })
     .map((repo) => ({
       ...toRepoDetail(repo),
       forks: 0,
@@ -140,7 +156,21 @@ async function fetchRecentWork(username: string, githubToken?: string) {
     .slice(0, 100)
     .map(({ recent, ...repo }) => repo);
 
-  return { username, recentWork: recent };
+  const externalActivityMap = new Map<string, Set<string>>();
+  for (const event of events) {
+    if (event.type !== 'PushEvent' && event.type !== 'PullRequestEvent' && event.type !== 'IssueCommentEvent') continue;
+    const name = event.repo.name;
+    if (combinedMap.has(name)) continue;
+    if (!externalActivityMap.has(name)) externalActivityMap.set(name, new Set());
+    const tag = event.type === 'PushEvent' ? 'push' : event.type === 'PullRequestEvent' ? 'pull_request' : 'issue_comment';
+    externalActivityMap.get(name)!.add(tag);
+  }
+
+  const externalActivity = Array.from(externalActivityMap.entries())
+    .slice(0, 10)
+    .map(([name, types]) => ({ full_name: name, github_url: `https://github.com/${name}`, activity: [...types] }));
+
+  return { username, recentWork: recent, externalActivity };
 }
 
 async function fetchRepoDetail(options: RepoDetailOptions, githubToken?: string): Promise<RepoDetail> {
