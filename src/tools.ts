@@ -44,7 +44,8 @@ export function getToolCatalog() {
 
 function summarizeRecentWork(result: Awaited<ReturnType<ReturnType<typeof createGitHubClient>['getRecentWork']>>) {
   const topRepos = result.recentWork.slice(0, 3).map((repo) => repo.full_name ?? repo.name).join(', ');
-  return `${appConfig.github.displayName} recent work (${result.recentWork.length} repos). Top: ${topRepos || 'none found'}.`;
+  const mergedCount = result.pullRequests.filter((pr) => pr.state === 'merged').length;
+  return `${appConfig.github.displayName} recent work (${result.recentWork.length} repos). Top: ${topRepos || 'none found'}. Pull requests: ${result.pullRequests.length} (${mergedCount} merged).`;
 }
 
 function summarizeRepoDetail(result: Awaited<ReturnType<ReturnType<typeof createGitHubClient>['getRepoDetail']>>) {

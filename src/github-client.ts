@@ -15,6 +15,20 @@ type GitHubEvent = {
   payload?: { action?: string };
 };
 
+type GitHubSearchIssue = {
+  title: string;
+  html_url: string;
+  repository_url: string;
+  state: string;
+  created_at: string;
+  closed_at: string | null;
+  pull_request?: { merged_at: string | null };
+};
+
+type GitHubSearchResult = {
+  items: GitHubSearchIssue[];
+};
+
 type GitHubRepo = {
   name: string;
   full_name?: string;
@@ -113,13 +127,15 @@ function toRepoDetail(repo: GitHubRepo): Omit<RepoDetail, 'html_url' | 'default_
 async function fetchRecentWork(username: string, githubToken?: string) {
   const twelveMonthsAgo = monthsAgoDate(12);
 
-  const [owned, orgs, events] = await Promise.all([
+  const [owned, orgs, events, prSearch] = await Promise.all([
     githubFetch<GitHubRepo[]>(`/users/${username}/repos?type=owner&per_page=100&sort=updated`, githubToken)
       .catch((err) => { console.warn('Could not fetch owned repos', err); return [] as GitHubRepo[]; }),
     githubFetch<any[]>(`/users/${username}/orgs`, githubToken)
       .catch((err) => { console.warn('Could not fetch user orgs', err); return [] as any[]; }),
     githubFetch<GitHubEvent[]>(`/users/${username}/events?per_page=100`, githubToken)
       .catch(() => [] as GitHubEvent[]),
+    githubFetch<GitHubSearchResult>(`/search/issues?q=${encodeURIComponent(`type:pr author:${username}`)}&sort=updated&order=desc&per_page=20`, githubToken)
+      .catch((err) => { console.warn('Could not fetch pull requests', err); return { items: [] } as GitHubSearchResult; }),
   ]);
 
   const orgRepos = (await Promise.all(
@@ -162,9 +178,6 @@ async function fetchRecentWork(username: string, githubToken?: string) {
     let tag: string;
     if (event.type === 'PushEvent') {
       tag = 'push';
-    } else if (event.type === 'PullRequestEvent') {
-      if (event.payload?.action !== 'merged') continue;
-      tag = 'merged_pr';
     } else if (event.type === 'IssueCommentEvent') {
       tag = 'issue_comment';
     } else {
@@ -180,7 +193,16 @@ async function fetchRecentWork(username: string, githubToken?: string) {
     .slice(0, 10)
     .map(([name, types]) => ({ full_name: name, github_url: `https://github.com/${name}`, activity: [...types] }));
 
-  return { username, recentWork: recent, externalActivity };
+  const pullRequests = prSearch.items.map((issue) => ({
+    title: issue.title,
+    html_url: issue.html_url,
+    repo: issue.repository_url.replace('https://api.github.com/repos/', ''),
+    state: issue.pull_request?.merged_at ? 'merged' : issue.state,
+    created_at: issue.created_at,
+    closed_at: issue.closed_at
+  }));
+
+  return { username, recentWork: recent, externalActivity, pullRequests };
 }
 
 async function fetchRepoDetail(options: RepoDetailOptions, githubToken?: string): Promise<RepoDetail> {
