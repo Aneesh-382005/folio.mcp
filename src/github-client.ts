@@ -22,6 +22,7 @@ type GitHubSearchIssue = {
   state: string;
   created_at: string;
   closed_at: string | null;
+  body?: string | null;
   pull_request?: { merged_at: string | null };
 };
 
@@ -88,6 +89,28 @@ function monthsAgoDate(months: number) {
   const date = new Date();
   date.setMonth(date.getMonth() - months);
   return date;
+}
+
+const PR_SUMMARY_MAX_CHARS = 400;
+
+// PR bodies are often auto-filled from repo templates (HTML comments, empty
+// checklist headers); strip that boilerplate so what's left is signal.
+function summarizePrBody(body: string | null | undefined): string | null {
+  if (!body) return null;
+
+  const cleaned = body
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/^#{1,6}\s.*$/gm, '')
+    .replace(/- \[ \].*$/gm, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
+
+  if (!cleaned) return null;
+
+  return cleaned.length > PR_SUMMARY_MAX_CHARS
+    ? `${cleaned.slice(0, PR_SUMMARY_MAX_CHARS)}…`
+    : cleaned;
 }
 
 async function githubFetch<T>(path: string, githubToken?: string): Promise<T> {
@@ -193,14 +216,19 @@ async function fetchRecentWork(username: string, githubToken?: string) {
     .slice(0, 10)
     .map(([name, types]) => ({ full_name: name, github_url: `https://github.com/${name}`, activity: [...types] }));
 
-  const pullRequests = prSearch.items.map((issue) => ({
-    title: issue.title,
-    html_url: issue.html_url,
-    repo: issue.repository_url.replace('https://api.github.com/repos/', ''),
-    state: issue.pull_request?.merged_at ? 'merged' : issue.state,
-    created_at: issue.created_at,
-    closed_at: issue.closed_at
-  }));
+  const pullRequests = prSearch.items.map((issue) => {
+    const merged = Boolean(issue.pull_request?.merged_at);
+
+    return {
+      title: issue.title,
+      html_url: issue.html_url,
+      repo: issue.repository_url.replace('https://api.github.com/repos/', ''),
+      state: merged ? 'merged' : issue.state,
+      created_at: issue.created_at,
+      closed_at: issue.closed_at,
+      summary: merged ? summarizePrBody(issue.body) : null
+    };
+  });
 
   return { username, recentWork: recent, externalActivity, pullRequests };
 }
