@@ -1,4 +1,4 @@
-import { withCache } from './cache';
+import { fetchWithEtagCache, withCache } from './cache';
 
 const GITHUB_API_BASE = 'https://api.github.com';
 const GITHUB_HEADERS: HeadersInit = {
@@ -8,6 +8,8 @@ const GITHUB_HEADERS: HeadersInit = {
 
 const RECENT_WORK_TTL_SECONDS = 15 * 60;
 const REPO_DETAIL_TTL_SECONDS = 60 * 60;
+// Shorter than the aggregate TTLs so per-endpoint ETag revalidation kicks in independently of them.
+const ENDPOINT_TTL_SECONDS = 5 * 60;
 
 type GitHubEvent = {
   type: string;
@@ -109,16 +111,25 @@ function summarizePrBody(body: string | null | undefined): string | null {
   return cleaned || null;
 }
 
-async function githubFetch<T>(path: string, githubToken?: string, fetchFn: typeof fetch = fetch): Promise<T> {
+type GithubFetchOptions = {
+  githubToken?: string;
+  fetchFn?: typeof fetch;
+  cacheKv?: KVNamespace;
+  cacheKey?: string;
+};
+
+async function githubFetch<T>(path: string, options: GithubFetchOptions = {}): Promise<T> {
+  const { githubToken, fetchFn = fetch, cacheKv, cacheKey } = options;
   const headers = new Headers(GITHUB_HEADERS);
 
   if (githubToken) {
     headers.set('Authorization', `Bearer ${githubToken}`);
   }
 
-  const response = await fetchFn(`${GITHUB_API_BASE}${path}`, {
-    headers
-  });
+  const url = `${GITHUB_API_BASE}${path}`;
+  const response = cacheKey
+    ? await fetchWithEtagCache(cacheKv, cacheKey, ENDPOINT_TTL_SECONDS, url, { headers }, fetchFn)
+    : await fetchFn(url, { headers });
 
   if (!response.ok) {
     const body = await response.text();
@@ -222,19 +233,18 @@ async function fetchOwnedAndOrgReposViaGraphQL(
 
 async function fetchOwnedAndOrgReposViaRest(
   username: string,
-  githubToken: string | undefined,
-  fetchFn: typeof fetch
+  base: GithubFetchOptions
 ): Promise<{ owned: GitHubRepo[]; orgRepos: GitHubRepo[] }> {
   const [owned, orgs] = await Promise.all([
-    githubFetch<GitHubRepo[]>(`/users/${username}/repos?type=owner&per_page=100&sort=updated`, githubToken, fetchFn)
+    githubFetch<GitHubRepo[]>(`/users/${username}/repos?type=owner&per_page=100&sort=updated`, { ...base, cacheKey: githubCacheKey('owned_repos', username) })
       .catch((err) => { console.warn('Could not fetch owned repos', err); return [] as GitHubRepo[]; }),
-    githubFetch<any[]>(`/users/${username}/orgs`, githubToken, fetchFn)
+    githubFetch<any[]>(`/users/${username}/orgs`, { ...base, cacheKey: githubCacheKey('user_orgs', username) })
       .catch((err) => { console.warn('Could not fetch user orgs', err); return [] as any[]; }),
   ]);
 
   const orgRepos = (await Promise.all(
     orgs.map((org) =>
-      githubFetch<GitHubRepo[]>(`/orgs/${org.login}/repos?type=public&per_page=100&sort=updated`, githubToken, fetchFn)
+      githubFetch<GitHubRepo[]>(`/orgs/${org.login}/repos?type=public&per_page=100&sort=updated`, { ...base, cacheKey: githubCacheKey('org_repos', org.login) })
         .catch((err) => { console.warn(`Could not fetch repos for org ${org.login}`, err); return [] as GitHubRepo[]; })
     )
   )).flat();
@@ -257,18 +267,19 @@ function toRepoDetail(repo: GitHubRepo): Omit<RepoDetail, 'html_url' | 'default_
   };
 }
 
-async function fetchRecentWork(username: string, githubToken?: string, fetchFn: typeof fetch = fetch) {
+async function fetchRecentWork(username: string, githubToken?: string, fetchFn: typeof fetch = fetch, cacheKv?: KVNamespace) {
   const twelveMonthsAgo = monthsAgoDate(12);
+  const base: GithubFetchOptions = { githubToken, fetchFn, cacheKv };
 
   const graphqlResult = githubToken
     ? await fetchOwnedAndOrgReposViaGraphQL(username, githubToken, fetchFn)
     : null;
 
   const [{ owned, orgRepos }, events, prSearch] = await Promise.all([
-    graphqlResult ? Promise.resolve(graphqlResult) : fetchOwnedAndOrgReposViaRest(username, githubToken, fetchFn),
-    githubFetch<GitHubEvent[]>(`/users/${username}/events?per_page=100`, githubToken, fetchFn)
+    graphqlResult ? Promise.resolve(graphqlResult) : fetchOwnedAndOrgReposViaRest(username, base),
+    githubFetch<GitHubEvent[]>(`/users/${username}/events?per_page=100`, { ...base, cacheKey: githubCacheKey('events', username) })
       .catch(() => [] as GitHubEvent[]),
-    githubFetch<GitHubSearchResult>(`/search/issues?q=${encodeURIComponent(`type:pr author:${username}`)}&sort=updated&order=desc&per_page=20`, githubToken, fetchFn)
+    githubFetch<GitHubSearchResult>(`/search/issues?q=${encodeURIComponent(`type:pr author:${username}`)}&sort=updated&order=desc&per_page=20`, { ...base, cacheKey: githubCacheKey('pr_search', username) })
       .catch((err) => { console.warn('Could not fetch pull requests', err); return { items: [] } as GitHubSearchResult; }),
   ]);
 
@@ -337,11 +348,12 @@ async function fetchRecentWork(username: string, githubToken?: string, fetchFn: 
   return { username, recentWork: recent, externalActivity, pullRequests };
 }
 
-async function fetchRepoDetail(options: RepoDetailOptions, githubToken?: string): Promise<RepoDetail> {
+async function fetchRepoDetail(options: RepoDetailOptions, base: GithubFetchOptions): Promise<RepoDetail> {
   const { repo, owner, detailLevel = 'summary', maxReadmeChars, maxTreeEntries } = options;
   const includeLanguages = detailLevel !== 'summary';
   const includeTree = detailLevel !== 'summary';
   const includeReadme = detailLevel === 'deep';
+  const { githubToken, fetchFn = fetch, cacheKv } = base;
 
   let ownerName = owner;
   let repoName = repo;
@@ -356,9 +368,14 @@ async function fetchRepoDetail(options: RepoDetailOptions, githubToken?: string)
   const headers = new Headers(GITHUB_HEADERS);
   if (githubToken) headers.set('Authorization', `Bearer ${githubToken}`);
 
-  const repoResp = await fetch(`${GITHUB_API_BASE}/repos/${ownerName}/${repoName}`, {
-    headers
-  });
+  const repoResp = await fetchWithEtagCache(
+    cacheKv,
+    githubCacheKey('repo', ownerName, repoName),
+    ENDPOINT_TTL_SECONDS,
+    `${GITHUB_API_BASE}/repos/${ownerName}/${repoName}`,
+    { headers },
+    fetchFn
+  );
 
   if (!repoResp.ok) {
     const body = await repoResp.text();
@@ -369,27 +386,32 @@ async function fetchRepoDetail(options: RepoDetailOptions, githubToken?: string)
 
   const [languages, readme, tree] = await Promise.all([
     includeLanguages
-      ? githubFetch<Record<string, number>>(`/repos/${ownerName}/${repoName}/languages`, githubToken)
+      ? githubFetch<Record<string, number>>(`/repos/${ownerName}/${repoName}/languages`, { ...base, cacheKey: githubCacheKey('languages', ownerName, repoName) })
           .catch((err) => { console.warn('Could not fetch languages', err); return null; })
       : Promise.resolve(null),
 
     includeReadme
-      ? (async () => {
-          const rawHeaders = new Headers(GITHUB_HEADERS);
-          if (githubToken) rawHeaders.set('Authorization', `Bearer ${githubToken}`);
-          rawHeaders.set('Accept', 'application/vnd.github.v3.raw');
-          const rawResp = await fetch(`${GITHUB_API_BASE}/repos/${ownerName}/${repoName}/readme`, { headers: rawHeaders });
-          if (rawResp.status === 404) return null;
-          if (!rawResp.ok) throw new Error(`README fetch failed: ${rawResp.status}`);
-          const text = await rawResp.text();
-          return (typeof maxReadmeChars === 'number' && maxReadmeChars > 0 && text.length > maxReadmeChars)
-            ? { text: `${text.slice(0, maxReadmeChars)}\n\n[truncated at ${maxReadmeChars} characters]` }
-            : { text };
-        })().catch((err) => { console.warn('Could not fetch README', err); return null; })
+      ? fetchWithEtagCache(
+          cacheKv,
+          githubCacheKey('readme', ownerName, repoName),
+          ENDPOINT_TTL_SECONDS,
+          `${GITHUB_API_BASE}/repos/${ownerName}/${repoName}/readme`,
+          { headers: { ...GITHUB_HEADERS, ...(githubToken ? { Authorization: `Bearer ${githubToken}` } : {}), Accept: 'application/vnd.github.v3.raw' } },
+          fetchFn
+        )
+          .then(async (rawResp) => {
+            if (rawResp.status === 404) return null;
+            if (!rawResp.ok) throw new Error(`README fetch failed: ${rawResp.status}`);
+            const text = await rawResp.text();
+            return (typeof maxReadmeChars === 'number' && maxReadmeChars > 0 && text.length > maxReadmeChars)
+              ? { text: `${text.slice(0, maxReadmeChars)}\n\n[truncated at ${maxReadmeChars} characters]` }
+              : { text };
+          })
+          .catch((err) => { console.warn('Could not fetch README', err); return null; })
       : Promise.resolve(null),
 
     includeTree
-      ? githubFetch<any>(`/repos/${ownerName}/${repoName}/git/trees/HEAD?recursive=0`, githubToken)
+      ? githubFetch<any>(`/repos/${ownerName}/${repoName}/git/trees/HEAD?recursive=0`, { ...base, cacheKey: githubCacheKey('tree', ownerName, repoName) })
           .then((treeResp) => {
             const paths = treeResp?.tree?.map((f: any) => f.path) ?? [];
             return (typeof maxTreeEntries === 'number' && maxTreeEntries > 0) ? paths.slice(0, maxTreeEntries) : paths;
@@ -433,7 +455,7 @@ export function createGitHubClient(options: GitHubClientOptions) {
         options.cacheKv,
         githubCacheKey('recent_work', resolvedUsername, options.githubToken ? 'auth' : 'anon'),
         RECENT_WORK_TTL_SECONDS,
-        () => fetchRecentWork(resolvedUsername, options.githubToken, options.fetchFn ?? fetch)
+        () => fetchRecentWork(resolvedUsername, options.githubToken, options.fetchFn ?? fetch, options.cacheKv)
       );
     },
     async getRepoDetail(repoOptions: RepoDetailOptions) {
@@ -449,7 +471,10 @@ export function createGitHubClient(options: GitHubClientOptions) {
           options.githubToken ? 'auth' : 'anon'
         ),
         REPO_DETAIL_TTL_SECONDS,
-        () => fetchRepoDetail(repoOptions.owner ? repoOptions : { ...repoOptions, owner: repoOptions.owner ?? resolvedUsername }, options.githubToken)
+        () => fetchRepoDetail(
+          repoOptions.owner ? repoOptions : { ...repoOptions, owner: repoOptions.owner ?? resolvedUsername },
+          { githubToken: options.githubToken, fetchFn: options.fetchFn ?? fetch, cacheKv: options.cacheKv }
+        )
       );
     }
   };
