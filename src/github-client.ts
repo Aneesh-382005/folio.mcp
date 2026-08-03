@@ -71,6 +71,7 @@ type GitHubClientOptions = {
   username: string;
   githubToken?: string;
   cacheKv?: KVNamespace;
+  fetchFn?: typeof fetch;
 };
 
 type RepoDetailOptions = {
@@ -108,14 +109,14 @@ function summarizePrBody(body: string | null | undefined): string | null {
   return cleaned || null;
 }
 
-async function githubFetch<T>(path: string, githubToken?: string): Promise<T> {
+async function githubFetch<T>(path: string, githubToken?: string, fetchFn: typeof fetch = fetch): Promise<T> {
   const headers = new Headers(GITHUB_HEADERS);
 
   if (githubToken) {
     headers.set('Authorization', `Bearer ${githubToken}`);
   }
 
-  const response = await fetch(`${GITHUB_API_BASE}${path}`, {
+  const response = await fetchFn(`${GITHUB_API_BASE}${path}`, {
     headers
   });
 
@@ -125,6 +126,120 @@ async function githubFetch<T>(path: string, githubToken?: string): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+type GraphQLRepoNode = {
+  name: string;
+  nameWithOwner: string;
+  description: string | null;
+  primaryLanguage: { name: string } | null;
+  repositoryTopics: { nodes: Array<{ topic: { name: string } }> };
+  stargazerCount: number;
+  pushedAt: string;
+  createdAt: string;
+  isFork: boolean;
+};
+
+const RECENT_WORK_GRAPHQL_QUERY = `
+query RecentWork($login: String!) {
+  user(login: $login) {
+    repositories(first: 100, ownerAffiliations: OWNER, orderBy: { field: PUSHED_AT, direction: DESC }) {
+      nodes { ...RepoFields }
+    }
+    organizations(first: 20) {
+      nodes {
+        login
+        repositories(first: 100, privacy: PUBLIC, orderBy: { field: PUSHED_AT, direction: DESC }) {
+          nodes { ...RepoFields }
+        }
+      }
+    }
+  }
+}
+fragment RepoFields on Repository {
+  name
+  nameWithOwner
+  description
+  primaryLanguage { name }
+  repositoryTopics(first: 20) { nodes { topic { name } } }
+  stargazerCount
+  pushedAt
+  createdAt
+  isFork
+}`;
+
+function graphqlRepoToRest(node: GraphQLRepoNode): GitHubRepo {
+  return {
+    name: node.name,
+    full_name: node.nameWithOwner,
+    description: node.description,
+    language: node.primaryLanguage?.name ?? null,
+    topics: node.repositoryTopics.nodes.map((t) => t.topic.name),
+    stargazers_count: node.stargazerCount,
+    pushed_at: node.pushedAt,
+    created_at: node.createdAt,
+    fork: node.isFork
+  };
+}
+
+// Requires a token: GitHub's GraphQL API has no anonymous access.
+async function fetchOwnedAndOrgReposViaGraphQL(
+  username: string,
+  githubToken: string,
+  fetchFn: typeof fetch
+): Promise<{ owned: GitHubRepo[]; orgRepos: GitHubRepo[] } | null> {
+  const response = await fetchFn(`${GITHUB_API_BASE}/graphql`, {
+    method: 'POST',
+    headers: {
+      ...GITHUB_HEADERS,
+      Authorization: `Bearer ${githubToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ query: RECENT_WORK_GRAPHQL_QUERY, variables: { login: username } })
+  });
+
+  if (!response.ok) {
+    console.warn('GraphQL recent-work query failed', response.status, await response.text());
+    return null;
+  }
+
+  const json: any = await response.json();
+  if (json.errors) {
+    console.warn('GraphQL recent-work query returned errors', json.errors);
+    return null;
+  }
+
+  const user = json.data?.user;
+  if (!user) return null;
+
+  const owned: GitHubRepo[] = (user.repositories?.nodes ?? []).map(graphqlRepoToRest);
+  const orgRepos: GitHubRepo[] = (user.organizations?.nodes ?? [])
+    .flatMap((org: any) => org.repositories?.nodes ?? [])
+    .map(graphqlRepoToRest);
+
+  return { owned, orgRepos };
+}
+
+async function fetchOwnedAndOrgReposViaRest(
+  username: string,
+  githubToken: string | undefined,
+  fetchFn: typeof fetch
+): Promise<{ owned: GitHubRepo[]; orgRepos: GitHubRepo[] }> {
+  const [owned, orgs] = await Promise.all([
+    githubFetch<GitHubRepo[]>(`/users/${username}/repos?type=owner&per_page=100&sort=updated`, githubToken, fetchFn)
+      .catch((err) => { console.warn('Could not fetch owned repos', err); return [] as GitHubRepo[]; }),
+    githubFetch<any[]>(`/users/${username}/orgs`, githubToken, fetchFn)
+      .catch((err) => { console.warn('Could not fetch user orgs', err); return [] as any[]; }),
+  ]);
+
+  const orgRepos = (await Promise.all(
+    orgs.map((org) =>
+      githubFetch<GitHubRepo[]>(`/orgs/${org.login}/repos?type=public&per_page=100&sort=updated`, githubToken, fetchFn)
+        .catch((err) => { console.warn(`Could not fetch repos for org ${org.login}`, err); return [] as GitHubRepo[]; })
+    )
+  )).flat();
+
+  return { owned, orgRepos };
 }
 
 function toRepoDetail(repo: GitHubRepo): Omit<RepoDetail, 'html_url' | 'default_branch' | 'languages' | 'open_issues' | 'created_at' | 'updated_at' | 'license' | 'archived' | 'private' | 'readme' | 'tree' | 'fetched_at'> {
@@ -142,26 +257,20 @@ function toRepoDetail(repo: GitHubRepo): Omit<RepoDetail, 'html_url' | 'default_
   };
 }
 
-async function fetchRecentWork(username: string, githubToken?: string) {
+async function fetchRecentWork(username: string, githubToken?: string, fetchFn: typeof fetch = fetch) {
   const twelveMonthsAgo = monthsAgoDate(12);
 
-  const [owned, orgs, events, prSearch] = await Promise.all([
-    githubFetch<GitHubRepo[]>(`/users/${username}/repos?type=owner&per_page=100&sort=updated`, githubToken)
-      .catch((err) => { console.warn('Could not fetch owned repos', err); return [] as GitHubRepo[]; }),
-    githubFetch<any[]>(`/users/${username}/orgs`, githubToken)
-      .catch((err) => { console.warn('Could not fetch user orgs', err); return [] as any[]; }),
-    githubFetch<GitHubEvent[]>(`/users/${username}/events?per_page=100`, githubToken)
+  const graphqlResult = githubToken
+    ? await fetchOwnedAndOrgReposViaGraphQL(username, githubToken, fetchFn)
+    : null;
+
+  const [{ owned, orgRepos }, events, prSearch] = await Promise.all([
+    graphqlResult ? Promise.resolve(graphqlResult) : fetchOwnedAndOrgReposViaRest(username, githubToken, fetchFn),
+    githubFetch<GitHubEvent[]>(`/users/${username}/events?per_page=100`, githubToken, fetchFn)
       .catch(() => [] as GitHubEvent[]),
-    githubFetch<GitHubSearchResult>(`/search/issues?q=${encodeURIComponent(`type:pr author:${username}`)}&sort=updated&order=desc&per_page=20`, githubToken)
+    githubFetch<GitHubSearchResult>(`/search/issues?q=${encodeURIComponent(`type:pr author:${username}`)}&sort=updated&order=desc&per_page=20`, githubToken, fetchFn)
       .catch((err) => { console.warn('Could not fetch pull requests', err); return { items: [] } as GitHubSearchResult; }),
   ]);
-
-  const orgRepos = (await Promise.all(
-    orgs.map((org) =>
-      githubFetch<GitHubRepo[]>(`/orgs/${org.login}/repos?type=public&per_page=100&sort=updated`, githubToken)
-        .catch((err) => { console.warn(`Could not fetch repos for org ${org.login}`, err); return [] as GitHubRepo[]; })
-    )
-  )).flat();
 
   const combinedMap = new Map<string, GitHubRepo>();
   const pushRepo = (repo: GitHubRepo) => {
@@ -324,7 +433,7 @@ export function createGitHubClient(options: GitHubClientOptions) {
         options.cacheKv,
         githubCacheKey('recent_work', resolvedUsername, options.githubToken ? 'auth' : 'anon'),
         RECENT_WORK_TTL_SECONDS,
-        () => fetchRecentWork(resolvedUsername, options.githubToken)
+        () => fetchRecentWork(resolvedUsername, options.githubToken, options.fetchFn ?? fetch)
       );
     },
     async getRepoDetail(repoOptions: RepoDetailOptions) {
