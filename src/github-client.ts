@@ -91,10 +91,9 @@ function monthsAgoDate(months: number) {
   return date;
 }
 
-const PR_SUMMARY_MAX_CHARS = 400;
-
 // PR bodies are often auto-filled from repo templates (HTML comments, empty
-// checklist headers); strip that boilerplate so what's left is signal.
+// checklist headers); strip that boilerplate so what's left is signal. Not
+// truncated here — callers that want a bounded excerpt slice it themselves.
 function summarizePrBody(body: string | null | undefined): string | null {
   if (!body) return null;
 
@@ -106,11 +105,7 @@ function summarizePrBody(body: string | null | undefined): string | null {
     .replace(/\n{2,}/g, '\n')
     .trim();
 
-  if (!cleaned) return null;
-
-  return cleaned.length > PR_SUMMARY_MAX_CHARS
-    ? `${cleaned.slice(0, PR_SUMMARY_MAX_CHARS)}…`
-    : cleaned;
+  return cleaned || null;
 }
 
 async function githubFetch<T>(path: string, githubToken?: string): Promise<T> {

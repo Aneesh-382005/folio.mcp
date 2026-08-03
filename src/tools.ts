@@ -42,17 +42,6 @@ export function getToolCatalog() {
   }));
 }
 
-function summarizeRecentWork(result: Awaited<ReturnType<ReturnType<typeof createGitHubClient>['getRecentWork']>>) {
-  const topRepos = result.recentWork.slice(0, 3).map((repo) => repo.full_name ?? repo.name).join(', ');
-  const mergedCount = result.pullRequests.filter((pr) => pr.state === 'merged').length;
-  return `${appConfig.github.displayName} recent work (${result.recentWork.length} repos). Top: ${topRepos || 'none found'}. Pull requests: ${result.pullRequests.length} (${mergedCount} merged).`;
-}
-
-function summarizeRepoDetail(result: Awaited<ReturnType<ReturnType<typeof createGitHubClient>['getRepoDetail']>>) {
-  const languageList = result.languages ? Object.keys(result.languages).slice(0, 4).join(', ') : result.primary_language ?? 'unknown';
-  return `${result.full_name ?? result.name} | ${result.html_url} | ${result.summary} | language ${languageList}.`;
-}
-
 export function registerTools(server: McpServer, options: RegisterToolsOptions = {}) {
   const github = createGitHubClient({
     username: options.githubUser ?? appConfig.github.username,
@@ -91,10 +80,44 @@ export function registerTools(server: McpServer, options: RegisterToolsOptions =
     });
   }
 
+  // MCP clients disagree on which of content/structuredContent they feed to
+  // the model, so content mirrors structuredContent in full here.
   server.tool('get_recent_work', appConfig.tools.getRecentWork.description, async () => {
     const result = await github.getRecentWork();
+    const mergedPrs = result.pullRequests.filter((pr) => pr.state === 'merged');
+    const otherPrs = result.pullRequests.filter((pr) => pr.state !== 'merged');
+
+    const lines = [
+      `${appConfig.github.displayName} recent work (last 12 months): ${result.recentWork.length} repos, ${result.pullRequests.length} pull requests (${mergedPrs.length} merged).`,
+      '',
+      'Repositories:',
+      ...result.recentWork.map((repo) => `- ${repo.full_name ?? repo.name} (${repo.primary_language ?? 'unknown'}, pushed ${repo.last_pushed_at}): ${repo.description ?? 'no description'}`)
+    ];
+
+    if (mergedPrs.length > 0) {
+      lines.push('', 'Merged pull requests:');
+      for (const pr of mergedPrs) {
+        const singleLine = pr.summary?.replace(/\s+/g, ' ').trim() || null;
+        lines.push(singleLine ? `- ${pr.repo}: ${pr.title} — ${singleLine}` : `- ${pr.repo}: ${pr.title}`);
+      }
+    }
+
+    if (otherPrs.length > 0) {
+      lines.push('', 'Other pull requests:');
+      for (const pr of otherPrs) {
+        lines.push(`- ${pr.repo}: ${pr.title} (${pr.state})`);
+      }
+    }
+
+    if (result.externalActivity.length > 0) {
+      lines.push('', 'External activity (repos not owned/orged but pushed to or commented on):');
+      for (const activity of result.externalActivity) {
+        lines.push(`- ${activity.full_name}: ${activity.activity.join(', ')}`);
+      }
+    }
+
     return {
-      content: [{ type: 'text', text: summarizeRecentWork(result) }],
+      content: [{ type: 'text', text: lines.join('\n') }],
       structuredContent: result
     };
   });
@@ -112,8 +135,10 @@ export function registerTools(server: McpServer, options: RegisterToolsOptions =
         maxTreeEntries: max_tree_entries
       });
 
+      const languageList = result.languages ? Object.keys(result.languages).slice(0, 4).join(', ') : result.primary_language ?? 'unknown';
+
       return {
-        content: [{ type: 'text', text: summarizeRepoDetail(result) }],
+        content: [{ type: 'text', text: `${result.full_name ?? result.name} | ${result.html_url} | ${result.summary} | language ${languageList}.` }],
         structuredContent: result
       };
     }
