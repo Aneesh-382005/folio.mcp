@@ -1,0 +1,22 @@
+# folio.mcp
+
+> Remote MCP server exposing Aneesh Grover's live GitHub activity, portfolio data, and a contact tool for LLMs to call directly. This is the machine-facing entry point; https://mcp.aneeshgrover.me/ is the human-facing tool-discovery UI for the same server.
+
+This is not a static profile. It's callable. Connect an MCP client to the endpoint below and call tools directly instead of scraping this page.
+
+## MCP endpoint
+- POST https://mcp.aneeshgrover.me/mcp: JSON-RPC 2.0 / Streamable HTTP MCP transport. Send `tools/list` first to confirm the live tool set (see the parity note below).
+
+## Tools
+- get_profile: minimal portfolio/contact links (GitHub, portfolio, resume, LinkedIn)
+- get_recent_work: public GitHub activity from the last 12 months, ranked by push recency, repos, merged/open pull requests, external contributions
+- get_repo_detail: metadata, languages, file tree, and README for one repository, at summary/standard/deep detail levels
+- send_message: sends a short message to Aneesh via email, rate-limited by IP
+
+## Human-facing
+- [Tool discovery UI](https://mcp.aneeshgrover.me/): same server, human-readable
+- [Portfolio](https://www.aneeshgrover.me/): full site and project list
+- [Source](https://github.com/Aneesh-382005/folio.mcp): this server's code
+
+## Optional
+- GET https://mcp.aneeshgrover.me/tools: JSON tool catalog, same data as the list above in machine-readable form
