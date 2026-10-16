@@ -95,6 +95,78 @@ describe('getRecentWork', () => {
     expect(ownedRepo?.topics).toEqual(['mcp']);
   });
 
+  it('returns pull requests with the issues they close from the same GraphQL query', async () => {
+    const fetchFn = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url === GRAPHQL_URL) {
+        return graphqlResponse({
+          data: {
+            pullRequests: {
+              nodes: [
+                {
+                  title: 'refactor(cli/docs): use tracing for docs opening status messages',
+                  url: 'https://github.com/rust-lang/rustup/pull/5005',
+                  state: 'MERGED',
+                  merged: true,
+                  createdAt: '2026-07-02T00:00:00Z',
+                  closedAt: '2026-07-03T00:00:00Z',
+                  body: 'Closes #4994\nSwitched to tracing::info!',
+                  repository: { nameWithOwner: 'rust-lang/rustup' },
+                  closingIssuesReferences: {
+                    nodes: [
+                      {
+                        number: 4994,
+                        title: '`rustup doc` should use `info!()` and friends for console output',
+                        url: 'https://github.com/rust-lang/rustup/issues/4994',
+                        state: 'CLOSED',
+                        createdAt: '2026-07-01T00:00:00Z',
+                        closedAt: '2026-07-03T00:00:00Z',
+                        body: 'We should systematically use the logging system here.',
+                        author: { login: 'rami3l' },
+                        comments: {
+                          totalCount: 1,
+                          nodes: [{ author: { login: 'aneesh-382005' }, authorAssociation: 'CONTRIBUTOR', createdAt: '2026-08-11T07:06:06Z', body: "I'll take a shot at it." }]
+                        },
+                        repository: { nameWithOwner: 'rust-lang/rustup' }
+                      }
+                    ]
+                  }
+                },
+                {}
+              ]
+            },
+            user: { repositories: { nodes: [] }, organizations: { nodes: [] } }
+          }
+        });
+      }
+      if (url.includes('/search/issues')) throw new Error('REST PR search should be skipped when GraphQL returns PRs');
+      return graphqlResponse([]);
+    });
+
+    const client = createGitHubClient({
+      username: 'Aneesh-382005',
+      githubToken: 'test-token',
+      fetchFn: fetchFn as unknown as typeof fetch
+    });
+
+    const { pullRequests } = await client.getRecentWork();
+
+    expect(pullRequests).toHaveLength(1);
+    expect(pullRequests[0].state).toBe('merged');
+    expect(pullRequests[0].linked_issues).toEqual([
+      expect.objectContaining({
+        number: 4994,
+        repo: 'rust-lang/rustup',
+        state: 'closed',
+        author: 'rami3l',
+        comment_count: 1,
+        raised_by_candidate: false,
+        summary: 'We should systematically use the logging system here.',
+        comments: [expect.objectContaining({ by_candidate: true, author_association: 'CONTRIBUTOR', body: "I'll take a shot at it." })]
+      })
+    ]);
+  });
+
   it('falls back to REST fan-out when no token is present (GraphQL requires auth)', async () => {
     const fetchFn = vi.fn(async (input: string) => {
       const url = String(input);

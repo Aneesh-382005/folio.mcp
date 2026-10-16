@@ -4,6 +4,7 @@ import { appConfig } from './config';
 import { registerContactTools } from './contact-tools.js';
 import { createGitHubClient } from './github-client';
 import { createProfileClient } from './profile-client';
+import { hasStory, renderStories } from './stories';
 
 type RegisterToolsOptions = {
   githubUser?: string;
@@ -94,17 +95,23 @@ export function registerTools(server: McpServer, options: RegisterToolsOptions =
       ...result.recentWork.map((repo) => `- ${repo.full_name ?? repo.name} (${repo.primary_language ?? 'unknown'}, pushed ${repo.last_pushed_at}): ${repo.description ?? 'no description'}`)
     ];
 
-    if (mergedPrs.length > 0) {
-      lines.push('', 'Merged pull requests:');
-      for (const pr of mergedPrs) {
-        const singleLine = pr.summary?.replace(/\s+/g, ' ').trim() || null;
+    const oneLine = (text: string | null | undefined) => text?.replace(/\s+/g, ' ').trim() || null;
+    lines.push(...renderStories(result.pullRequests, appConfig.github.displayName));
+
+    const plainMerged = mergedPrs.filter((pr) => !hasStory(pr));
+    const plainOther = otherPrs.filter((pr) => !hasStory(pr));
+
+    if (plainMerged.length > 0) {
+      lines.push('', 'Other merged pull requests:');
+      for (const pr of plainMerged) {
+        const singleLine = oneLine(pr.summary);
         lines.push(singleLine ? `- ${pr.repo}: ${pr.title} — ${singleLine}` : `- ${pr.repo}: ${pr.title}`);
       }
     }
 
-    if (otherPrs.length > 0) {
+    if (plainOther.length > 0) {
       lines.push('', 'Other pull requests:');
-      for (const pr of otherPrs) {
+      for (const pr of plainOther) {
         lines.push(`- ${pr.repo}: ${pr.title} (${pr.state})`);
       }
     }

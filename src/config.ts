@@ -41,7 +41,7 @@ export const appConfig = {
     getRecentWork: {
       title: 'Recent Work',
       description:
-        'Use this tool to retrieve recent public GitHub repositories actively worked on by Aneesh Grover (Aneesh-382005) within the last 12 months. Returns non-fork repositories with descriptions, technologies, topics, and activity metadata from personal and organization projects. Useful for portfolio analysis, technical evaluation, and understanding current AI, infrastructure, or developer-tooling work.'
+        'Use this tool to retrieve recent public GitHub repositories actively worked on by Aneesh Grover (Aneesh-382005) within the last 12 months. Returns non-fork repositories with descriptions, technologies, topics, and activity metadata from personal and organization projects, plus recent pull requests (including open-source contributions) with the GitHub issues each one closes and the discussion on them, presented as contribution stories (problem, discussion, solution, outcome) that show motivation and design reasoning, not just what shipped. Useful for portfolio analysis, technical evaluation, and understanding current AI, infrastructure, or developer-tooling work.'
       ,
       returns: 'Recent public repositories from the last 12 months with activity metadata.',
       exampleInput: null,

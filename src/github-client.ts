@@ -32,6 +32,42 @@ type GitHubSearchResult = {
   items: GitHubSearchIssue[];
 };
 
+type LinkedIssue = {
+  number: number;
+  title: string;
+  html_url: string;
+  repo: string;
+  state: string;
+  author: string | null;
+  created_at: string;
+  closed_at: string | null;
+  comment_count: number;
+  summary: string | null;
+  // True when the candidate opened the issue themselves (problem origination, not just picking one up).
+  raised_by_candidate: boolean;
+  comments: IssueComment[];
+};
+
+type IssueComment = {
+  author: string | null;
+  // GitHub's relationship of the commenter to the repo (OWNER, MEMBER, CONTRIBUTOR, NONE, ...).
+  author_association: string;
+  by_candidate: boolean;
+  created_at: string;
+  body: string;
+};
+
+type PullRequestSummary = {
+  title: string;
+  html_url: string;
+  repo: string;
+  state: string;
+  created_at: string;
+  closed_at: string | null;
+  summary: string | null;
+  linked_issues: LinkedIssue[];
+};
+
 type GitHubRepo = {
   name: string;
   full_name?: string;
@@ -111,6 +147,47 @@ function summarizePrBody(body: string | null | undefined): string | null {
   return cleaned || null;
 }
 
+const LINKED_ISSUE_SUMMARY_CHARS = 1200;
+const ISSUE_COMMENT_CHARS = 600;
+
+function graphqlPrToSummary(node: any, username: string): PullRequestSummary {
+  const isCandidate = (login: string | null | undefined) => login?.toLowerCase() === username.toLowerCase();
+  const merged = Boolean(node.merged);
+  const linkedIssues: LinkedIssue[] = (node.closingIssuesReferences?.nodes ?? []).map((issue: any) => ({
+    number: issue.number,
+    title: issue.title,
+    html_url: issue.url,
+    repo: issue.repository?.nameWithOwner ?? '',
+    state: String(issue.state).toLowerCase(),
+    author: issue.author?.login ?? null,
+    created_at: issue.createdAt,
+    closed_at: issue.closedAt ?? null,
+    comment_count: issue.comments?.totalCount ?? 0,
+    summary: summarizePrBody(issue.body)?.slice(0, LINKED_ISSUE_SUMMARY_CHARS) ?? null,
+    raised_by_candidate: isCandidate(issue.author?.login),
+    comments: (issue.comments?.nodes ?? [])
+      .filter((c: any) => c?.body?.trim())
+      .map((c: any): IssueComment => ({
+        author: c.author?.login ?? null,
+        author_association: c.authorAssociation,
+        by_candidate: isCandidate(c.author?.login),
+        created_at: c.createdAt,
+        body: c.body.trim().slice(0, ISSUE_COMMENT_CHARS)
+      }))
+  }));
+
+  return {
+    title: node.title,
+    html_url: node.url,
+    repo: node.repository?.nameWithOwner ?? '',
+    state: merged ? 'merged' : String(node.state).toLowerCase(),
+    created_at: node.createdAt,
+    closed_at: node.closedAt ?? null,
+    summary: merged ? summarizePrBody(node.body) : null,
+    linked_issues: linkedIssues
+  };
+}
+
 type GithubFetchOptions = {
   githubToken?: string;
   fetchFn?: typeof fetch;
@@ -152,7 +229,38 @@ type GraphQLRepoNode = {
 };
 
 const RECENT_WORK_GRAPHQL_QUERY = `
-query RecentWork($login: String!) {
+query RecentWork($login: String!, $prQuery: String!) {
+  pullRequests: search(query: $prQuery, type: ISSUE, first: 20) {
+    nodes {
+      ... on PullRequest {
+        title
+        url
+        state
+        merged
+        createdAt
+        closedAt
+        body
+        repository { nameWithOwner }
+        closingIssuesReferences(first: 5) {
+          nodes {
+            number
+            title
+            url
+            state
+            createdAt
+            closedAt
+            body
+            author { login }
+            comments(first: 10) {
+              totalCount
+              nodes { author { login } authorAssociation createdAt body }
+            }
+            repository { nameWithOwner }
+          }
+        }
+      }
+    }
+  }
   user(login: $login) {
     repositories(first: 100, ownerAffiliations: OWNER, orderBy: { field: PUSHED_AT, direction: DESC }) {
       nodes { ...RepoFields }
@@ -198,7 +306,7 @@ async function fetchOwnedAndOrgReposViaGraphQL(
   username: string,
   githubToken: string,
   fetchFn: typeof fetch
-): Promise<{ owned: GitHubRepo[]; orgRepos: GitHubRepo[] } | null> {
+): Promise<{ owned: GitHubRepo[]; orgRepos: GitHubRepo[]; pullRequests: PullRequestSummary[] | null } | null> {
   const response = await fetchFn(`${GITHUB_API_BASE}/graphql`, {
     method: 'POST',
     headers: {
@@ -206,7 +314,7 @@ async function fetchOwnedAndOrgReposViaGraphQL(
       Authorization: `Bearer ${githubToken}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ query: RECENT_WORK_GRAPHQL_QUERY, variables: { login: username } })
+    body: JSON.stringify({ query: RECENT_WORK_GRAPHQL_QUERY, variables: { login: username, prQuery: `type:pr author:${username} sort:updated-desc` } })
   });
 
   if (!response.ok) {
@@ -228,7 +336,11 @@ async function fetchOwnedAndOrgReposViaGraphQL(
     .flatMap((org: any) => org.repositories?.nodes ?? [])
     .map(graphqlRepoToRest);
 
-  return { owned, orgRepos };
+  // Absent only if the response lacks the search block; callers fall back to REST then.
+  const prNodes: any[] | undefined = json.data?.pullRequests?.nodes;
+  const pullRequests = prNodes ? prNodes.filter((n) => n?.url).map((n) => graphqlPrToSummary(n, username)) : null;
+
+  return { owned, orgRepos, pullRequests };
 }
 
 async function fetchOwnedAndOrgReposViaRest(
@@ -279,7 +391,9 @@ async function fetchRecentWork(username: string, githubToken?: string, fetchFn: 
     graphqlResult ? Promise.resolve(graphqlResult) : fetchOwnedAndOrgReposViaRest(username, base),
     githubFetch<GitHubEvent[]>(`/users/${username}/events?per_page=100`, { ...base, cacheKey: githubCacheKey('events', username) })
       .catch(() => [] as GitHubEvent[]),
-    githubFetch<GitHubSearchResult>(`/search/issues?q=${encodeURIComponent(`type:pr author:${username}`)}&sort=updated&order=desc&per_page=20`, { ...base, cacheKey: githubCacheKey('pr_search', username) })
+    graphqlResult?.pullRequests
+      ? Promise.resolve({ items: [] } as GitHubSearchResult)
+      : githubFetch<GitHubSearchResult>(`/search/issues?q=${encodeURIComponent(`type:pr author:${username}`)}&sort=updated&order=desc&per_page=20`, { ...base, cacheKey: githubCacheKey('pr_search', username) })
       .catch((err) => { console.warn('Could not fetch pull requests', err); return { items: [] } as GitHubSearchResult; }),
   ]);
 
@@ -331,7 +445,7 @@ async function fetchRecentWork(username: string, githubToken?: string, fetchFn: 
     .slice(0, 10)
     .map(([name, types]) => ({ full_name: name, github_url: `https://github.com/${name}`, activity: [...types] }));
 
-  const pullRequests = prSearch.items.map((issue) => {
+  const pullRequests: PullRequestSummary[] = graphqlResult?.pullRequests ?? prSearch.items.map((issue) => {
     const merged = Boolean(issue.pull_request?.merged_at);
 
     return {
@@ -341,7 +455,8 @@ async function fetchRecentWork(username: string, githubToken?: string, fetchFn: 
       state: merged ? 'merged' : issue.state,
       created_at: issue.created_at,
       closed_at: issue.closed_at,
-      summary: merged ? summarizePrBody(issue.body) : null
+      summary: merged ? summarizePrBody(issue.body) : null,
+      linked_issues: []
     };
   });
 
