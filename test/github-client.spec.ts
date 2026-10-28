@@ -153,6 +153,7 @@ describe('getRecentWork', () => {
 
     expect(pullRequests).toHaveLength(1);
     expect(pullRequests[0].state).toBe('merged');
+    expect(pullRequests[0].days_from_issue_to_merge).toBe(2);
     expect(pullRequests[0].linked_issues).toEqual([
       expect.objectContaining({
         number: 4994,
@@ -161,6 +162,7 @@ describe('getRecentWork', () => {
         author: 'rami3l',
         comment_count: 1,
         raised_by_candidate: false,
+        origin: 'volunteered',
         summary: 'We should systematically use the logging system here.',
         comments: [expect.objectContaining({ by_candidate: true, author_association: 'CONTRIBUTOR', body: "I'll take a shot at it." })]
       })

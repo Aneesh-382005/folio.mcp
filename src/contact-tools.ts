@@ -1,6 +1,7 @@
 import * as z from 'zod/v4';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { appConfig } from './config';
+import { toolResult } from './tool-result';
 
 const resendApiUrl = 'https://api.resend.com/emails';
 const rateLimitKeyPrefix = 'ratelimit:send:';
@@ -217,21 +218,14 @@ export async function sendMessageViaResend(input: SendMessageInput, dependencies
 
   const responseBody = (await response.json().catch(() => null)) as { id?: string } | null;
 
-  return {
-    content: [
-      {
-        type: 'text',
-        text: `Message sent to Aneesh from ${input.sender_name}.`
-      }
-    ],
-    structuredContent: {
-      success: true,
-      messageId: responseBody?.id ?? null,
-      recipient: appConfig.contact.inboxEmail,
-      sender_name: input.sender_name,
-      context: input.context ?? null
-    }
-  };
+  return toolResult({
+    success: true,
+    message: `Message sent to Aneesh from ${input.sender_name}.`,
+    messageId: responseBody?.id,
+    recipient: appConfig.contact.inboxEmail,
+    sender_name: input.sender_name,
+    context: input.context
+  });
 }
 
 export function registerContactTools(server: McpServer, options: RegisterContactToolsOptions) {

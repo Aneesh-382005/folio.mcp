@@ -1,4 +1,5 @@
 import { fetchWithEtagCache, withCache } from './cache';
+import { STORY_READING_GUIDE, annotateFollowUps } from './stories';
 
 const GITHUB_API_BASE = 'https://api.github.com';
 const GITHUB_HEADERS: HeadersInit = {
@@ -32,7 +33,7 @@ type GitHubSearchResult = {
   items: GitHubSearchIssue[];
 };
 
-type LinkedIssue = {
+export type LinkedIssue = {
   number: number;
   title: string;
   html_url: string;
@@ -45,6 +46,10 @@ type LinkedIssue = {
   summary: string | null;
   // True when the candidate opened the issue themselves (problem origination, not just picking one up).
   raised_by_candidate: boolean;
+  // self_raised: candidate opened it; volunteered: candidate commented before fixing; fixed: candidate fixed someone else's issue unprompted.
+  origin: 'self_raised' | 'volunteered' | 'fixed';
+  // URL of an earlier PR in the same result that this issue's text refers to (set by annotateFollowUps).
+  arose_from_pr?: string;
   comments: IssueComment[];
 };
 
@@ -57,7 +62,7 @@ type IssueComment = {
   body: string;
 };
 
-type PullRequestSummary = {
+export type PullRequestSummary = {
   title: string;
   html_url: string;
   repo: string;
@@ -65,6 +70,8 @@ type PullRequestSummary = {
   created_at: string;
   closed_at: string | null;
   summary: string | null;
+  // Whole days from the first linked issue being raised to this PR merging; null if not merged or no issue.
+  days_from_issue_to_merge: number | null;
   linked_issues: LinkedIssue[];
 };
 
@@ -165,6 +172,11 @@ function graphqlPrToSummary(node: any, username: string): PullRequestSummary {
     comment_count: issue.comments?.totalCount ?? 0,
     summary: summarizePrBody(issue.body)?.slice(0, LINKED_ISSUE_SUMMARY_CHARS) ?? null,
     raised_by_candidate: isCandidate(issue.author?.login),
+    origin: isCandidate(issue.author?.login)
+      ? 'self_raised'
+      : (issue.comments?.nodes ?? []).some((c: any) => isCandidate(c?.author?.login))
+        ? 'volunteered'
+        : 'fixed',
     comments: (issue.comments?.nodes ?? [])
       .filter((c: any) => c?.body?.trim())
       .map((c: any): IssueComment => ({
@@ -176,6 +188,11 @@ function graphqlPrToSummary(node: any, username: string): PullRequestSummary {
       }))
   }));
 
+  const firstIssue = linkedIssues[0];
+  const daysToMerge = merged && node.closedAt && firstIssue
+    ? Math.max(0, Math.round((new Date(node.closedAt).getTime() - new Date(firstIssue.created_at).getTime()) / 86_400_000))
+    : null;
+
   return {
     title: node.title,
     html_url: node.url,
@@ -184,6 +201,7 @@ function graphqlPrToSummary(node: any, username: string): PullRequestSummary {
     created_at: node.createdAt,
     closed_at: node.closedAt ?? null,
     summary: merged ? summarizePrBody(node.body) : null,
+    days_from_issue_to_merge: daysToMerge,
     linked_issues: linkedIssues
   };
 }
@@ -456,11 +474,14 @@ async function fetchRecentWork(username: string, githubToken?: string, fetchFn: 
       created_at: issue.created_at,
       closed_at: issue.closed_at,
       summary: merged ? summarizePrBody(issue.body) : null,
+      days_from_issue_to_merge: null,
       linked_issues: []
     };
   });
 
-  return { username, recentWork: recent, externalActivity, pullRequests };
+  annotateFollowUps(pullRequests);
+
+  return { username, reading_guide: STORY_READING_GUIDE, recentWork: recent, externalActivity, pullRequests };
 }
 
 async function fetchRepoDetail(options: RepoDetailOptions, base: GithubFetchOptions): Promise<RepoDetail> {

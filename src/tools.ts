@@ -4,7 +4,7 @@ import { appConfig } from './config';
 import { registerContactTools } from './contact-tools.js';
 import { createGitHubClient } from './github-client';
 import { createProfileClient } from './profile-client';
-import { hasStory, renderStories } from './stories';
+import { toolResult } from './tool-result';
 
 type RegisterToolsOptions = {
   githubUser?: string;
@@ -51,27 +51,7 @@ export function registerTools(server: McpServer, options: RegisterToolsOptions =
   });
   const profile = createProfileClient(appConfig.profile);
 
-  server.tool('get_profile', appConfig.tools.getProfile.description, async () => {
-    const result = profile.getProfile();
-    const links = [
-      `GitHub: ${result.links.github}`,
-      result.links.portfolio ? `Portfolio: ${result.links.portfolio}` : null,
-      result.links.resume ? `Resume: ${result.links.resume}` : null,
-      result.links.linkedin ? `LinkedIn: ${result.links.linkedin}` : null
-    ]
-      .filter(Boolean)
-      .join(' | ');
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `${result.name} | ${links}`
-        }
-      ],
-      structuredContent: result
-    };
-  });
+  server.tool('get_profile', appConfig.tools.getProfile.description, async () => toolResult({ ...profile.getProfile() }));
 
   if (options.request) {
     registerContactTools(server, {
@@ -81,53 +61,10 @@ export function registerTools(server: McpServer, options: RegisterToolsOptions =
     });
   }
 
-  // MCP clients disagree on which of content/structuredContent they feed to
-  // the model, so content mirrors structuredContent in full here.
-  server.tool('get_recent_work', appConfig.tools.getRecentWork.description, async () => {
-    const result = await github.getRecentWork();
-    const mergedPrs = result.pullRequests.filter((pr) => pr.state === 'merged');
-    const otherPrs = result.pullRequests.filter((pr) => pr.state !== 'merged');
-
-    const lines = [
-      `${appConfig.github.displayName} recent work (last 12 months): ${result.recentWork.length} repos, ${result.pullRequests.length} pull requests (${mergedPrs.length} merged).`,
-      '',
-      'Repositories:',
-      ...result.recentWork.map((repo) => `- ${repo.full_name ?? repo.name} (${repo.primary_language ?? 'unknown'}, pushed ${repo.last_pushed_at}): ${repo.description ?? 'no description'}`)
-    ];
-
-    const oneLine = (text: string | null | undefined) => text?.replace(/\s+/g, ' ').trim() || null;
-    lines.push(...renderStories(result.pullRequests, appConfig.github.displayName));
-
-    const plainMerged = mergedPrs.filter((pr) => !hasStory(pr));
-    const plainOther = otherPrs.filter((pr) => !hasStory(pr));
-
-    if (plainMerged.length > 0) {
-      lines.push('', 'Other merged pull requests:');
-      for (const pr of plainMerged) {
-        const singleLine = oneLine(pr.summary);
-        lines.push(singleLine ? `- ${pr.repo}: ${pr.title} — ${singleLine}` : `- ${pr.repo}: ${pr.title}`);
-      }
-    }
-
-    if (plainOther.length > 0) {
-      lines.push('', 'Other pull requests:');
-      for (const pr of plainOther) {
-        lines.push(`- ${pr.repo}: ${pr.title} (${pr.state})`);
-      }
-    }
-
-    if (result.externalActivity.length > 0) {
-      lines.push('', 'External activity (repos not owned/orged but pushed to or commented on):');
-      for (const activity of result.externalActivity) {
-        lines.push(`- ${activity.full_name}: ${activity.activity.join(', ')}`);
-      }
-    }
-
-    return {
-      content: [{ type: 'text', text: lines.join('\n') }],
-      structuredContent: result
-    };
-  });
+  // content and structuredContent are built from one object (see tool-result.ts).
+  server.tool('get_recent_work', appConfig.tools.getRecentWork.description, async () =>
+    toolResult({ ...(await github.getRecentWork()) })
+  );
 
   server.tool(
     'get_repo_detail',
@@ -142,12 +79,7 @@ export function registerTools(server: McpServer, options: RegisterToolsOptions =
         maxTreeEntries: max_tree_entries
       });
 
-      const languageList = result.languages ? Object.keys(result.languages).slice(0, 4).join(', ') : result.primary_language ?? 'unknown';
-
-      return {
-        content: [{ type: 'text', text: `${result.full_name ?? result.name} | ${result.html_url} | ${result.summary} | language ${languageList}.` }],
-        structuredContent: result
-      };
+      return toolResult({ ...result });
     }
   );
 }

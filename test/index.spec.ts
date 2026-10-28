@@ -25,4 +25,22 @@ describe('folio-mcp worker', () => {
 		expect(body).toContain('<!doctype html>');
 		expect(body).toContain('folio-mcp');
 	});
+
+	it('returns identical data in content and structuredContent over /mcp', async () => {
+		const response = await worker.fetch(
+			new Request('https://example.com/mcp', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+				body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_profile', arguments: {} } })
+			}),
+			env,
+			{} as unknown as ExecutionContext
+		);
+		const raw = await response.text();
+		const payload = JSON.parse(raw.includes('data:') ? raw.split('\n').find((l) => l.startsWith('data:'))!.slice(5) : raw);
+		const result = payload.result;
+
+		expect(result.structuredContent).toBeTruthy();
+		expect(JSON.parse(result.content[0].text)).toEqual(result.structuredContent);
+	});
 });
