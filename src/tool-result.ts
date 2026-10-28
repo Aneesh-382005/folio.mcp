@@ -1,27 +1,33 @@
-// Single source of truth for tool results. MCP clients disagree on whether they
-// feed `content` or `structuredContent` to the model, so both are built from the
-// same object here and cannot drift apart. The spec asks for exactly this:
-// "a tool that returns structured content SHOULD also return the serialized JSON
-// in a TextContent block" (MCP 2025-11-25, server/tools).
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type * as z from 'zod/v4';
 
-// Null/undefined object properties carry no information; dropping them keeps the
-// payload (sent twice by clients that read both fields) small. Array items are kept.
-export function dropNulls<T>(value: T): T {
-  if (Array.isArray(value)) return value.map(dropNulls) as T;
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(([, v]) => v !== null && v !== undefined)
-        .map(([k, v]) => [k, dropNulls(v)])
-    ) as T;
-  }
-  return value;
-}
+export class ToolError extends Error {}
 
-export function toolResult<T extends Record<string, unknown>>(data: T) {
-  const structuredContent = dropNulls(data);
-  return {
-    content: [{ type: 'text' as const, text: JSON.stringify(structuredContent) }],
-    structuredContent
+type Data = Record<string, unknown>;
+type Shape = Record<string, z.ZodType>;
+
+// Handlers return plain data and this builds both result fields from it, so
+// `content` and `structuredContent` always carry the same thing.
+export function registerTool(server: McpServer, name: string, description: string, handler: () => Data | Promise<Data>): void;
+export function registerTool<S extends Shape>(
+  server: McpServer,
+  name: string,
+  description: string,
+  schema: S,
+  handler: (args: z.infer<z.ZodObject<S>>) => Data | Promise<Data>
+): void;
+export function registerTool(server: McpServer, name: string, description: string, ...rest: unknown[]): void {
+  const handler = rest.pop() as (args: unknown) => Data | Promise<Data>;
+
+  const callback = async (args: unknown) => {
+    try {
+      const data = await handler(args);
+      return { content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data };
+    } catch (err) {
+      if (err instanceof ToolError) return { isError: true, content: [{ type: 'text', text: err.message }] };
+      throw err;
+    }
   };
+
+  (server.tool as (...args: unknown[]) => unknown).call(server, name, description, ...rest, callback);
 }

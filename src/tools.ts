@@ -4,7 +4,7 @@ import { appConfig } from './config';
 import { registerContactTools } from './contact-tools.js';
 import { createGitHubClient } from './github-client';
 import { createProfileClient } from './profile-client';
-import { toolResult } from './tool-result';
+import { registerTool } from './tool-result';
 
 type RegisterToolsOptions = {
   githubUser?: string;
@@ -51,7 +51,7 @@ export function registerTools(server: McpServer, options: RegisterToolsOptions =
   });
   const profile = createProfileClient(appConfig.profile);
 
-  server.tool('get_profile', appConfig.tools.getProfile.description, async () => toolResult({ ...profile.getProfile() }));
+  registerTool(server, 'get_profile', appConfig.tools.getProfile.description, () => profile.getProfile());
 
   if (options.request) {
     registerContactTools(server, {
@@ -61,25 +61,20 @@ export function registerTools(server: McpServer, options: RegisterToolsOptions =
     });
   }
 
-  // content and structuredContent are built from one object (see tool-result.ts).
-  server.tool('get_recent_work', appConfig.tools.getRecentWork.description, async () =>
-    toolResult({ ...(await github.getRecentWork()) })
-  );
+  registerTool(server, 'get_recent_work', appConfig.tools.getRecentWork.description, () => github.getRecentWork());
 
-  server.tool(
+  registerTool(
+    server,
     'get_repo_detail',
     appConfig.tools.getRepoDetail.description,
     repoDetailSchema,
-    async ({ repo, owner, detail_level, max_readme_chars, max_tree_entries }) => {
-      const result = await github.getRepoDetail({
+    ({ repo, owner, detail_level, max_readme_chars, max_tree_entries }) =>
+      github.getRepoDetail({
         repo,
         owner,
         detailLevel: detail_level,
         maxReadmeChars: max_readme_chars,
         maxTreeEntries: max_tree_entries
-      });
-
-      return toolResult({ ...result });
-    }
+      })
   );
 }

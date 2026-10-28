@@ -1,7 +1,7 @@
 import * as z from 'zod/v4';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { appConfig } from './config';
-import { toolResult } from './tool-result';
+import { ToolError, registerTool } from './tool-result';
 
 const resendApiUrl = 'https://api.resend.com/emails';
 const rateLimitKeyPrefix = 'ratelimit:send:';
@@ -36,12 +36,6 @@ type SendMessageInput = {
   message: string;
   context?: string;
   reply_to_email?: string;
-};
-
-type ToolResult = {
-  content: Array<{ type: 'text'; text: string }>;
-  structuredContent?: Record<string, unknown>;
-  isError?: boolean;
 };
 
 type SendMessageDependencies = {
@@ -166,24 +160,17 @@ async function enforceRateLimit(cacheKv: KVNamespace | undefined, ip: string): P
   return { allowed: true };
 }
 
-function buildErrorResult(message: string): ToolResult {
-  return {
-    isError: true,
-    content: [{ type: 'text', text: message }]
-  };
-}
-
-export async function sendMessageViaResend(input: SendMessageInput, dependencies: SendMessageDependencies): Promise<ToolResult> {
+export async function sendMessageViaResend(input: SendMessageInput, dependencies: SendMessageDependencies): Promise<Record<string, unknown>> {
   const resendApiKey = dependencies.resendApiKey?.trim();
   if (!resendApiKey) {
-    return buildErrorResult('Email delivery is not configured right now because RESEND_API_KEY is missing.');
+    throw new ToolError('Email delivery is not configured right now because RESEND_API_KEY is missing.');
   }
 
   const ip = getClientIp(dependencies.request);
   const rateLimit = await enforceRateLimit(dependencies.cacheKv, ip);
   if (!rateLimit.allowed) {
     const resetAt = new Date(rateLimit.resetAt).toISOString();
-    return buildErrorResult(`Rate limit exceeded. This IP can send at most ${rateLimitMaxSends} messages per 24 hours. Try again after ${resetAt}.`);
+    throw new ToolError(`Rate limit exceeded. This IP can send at most ${rateLimitMaxSends} messages per 24 hours. Try again after ${resetAt}.`);
   }
 
   const subject = `folio.mcp message from ${input.sender_name}`;
@@ -207,29 +194,30 @@ export async function sendMessageViaResend(input: SendMessageInput, dependencies
       body: JSON.stringify(payload)
     });
   } catch {
-    return buildErrorResult('The email could not be sent because the Resend request failed before a response was returned.');
+    throw new ToolError('The email could not be sent because the Resend request failed before a response was returned.');
   }
 
   if (!response.ok) {
     const responseText = await response.text().catch(() => '');
     const failureDetail = responseText.trim() || `HTTP ${response.status}`;
-    return buildErrorResult(`The email could not be sent because Resend returned an error: ${failureDetail}.`);
+    throw new ToolError(`The email could not be sent because Resend returned an error: ${failureDetail}.`);
   }
 
   const responseBody = (await response.json().catch(() => null)) as { id?: string } | null;
 
-  return toolResult({
+  return {
     success: true,
     message: `Message sent to Aneesh from ${input.sender_name}.`,
-    messageId: responseBody?.id,
+    messageId: responseBody?.id ?? null,
     recipient: appConfig.contact.inboxEmail,
     sender_name: input.sender_name,
-    context: input.context
-  });
+    context: input.context ?? null
+  };
 }
 
 export function registerContactTools(server: McpServer, options: RegisterContactToolsOptions) {
-  server.tool(
+  registerTool(
+    server,
     'send_message',
     appConfig.tools.sendMessage.description,
     sendMessageSchema,

@@ -57,7 +57,7 @@ describe('fetchWithEtagCache', () => {
 
     expect(await revalidated.text()).toBe('hello');
     expect(fetchFn).toHaveBeenCalledTimes(2);
-    const revalidateInit = fetchFn.mock.calls[1]?.[1] as RequestInit;
+    const revalidateInit = (fetchFn.mock.calls as unknown[][])[1]?.[1] as RequestInit;
     expect(new Headers(revalidateInit.headers).get('If-None-Match')).toBe('v1');
   });
 

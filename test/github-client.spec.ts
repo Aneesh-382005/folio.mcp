@@ -121,12 +121,38 @@ describe('getRecentWork', () => {
                         state: 'CLOSED',
                         createdAt: '2026-07-01T00:00:00Z',
                         closedAt: '2026-07-03T00:00:00Z',
-                        body: 'We should systematically use the logging system here.',
+                        body: 'In #4986 the output is not logged. We should systematically use the logging system here.',
                         author: { login: 'rami3l' },
                         comments: {
                           totalCount: 1,
                           nodes: [{ author: { login: 'aneesh-382005' }, authorAssociation: 'CONTRIBUTOR', createdAt: '2026-08-11T07:06:06Z', body: "I'll take a shot at it." }]
                         },
+                        repository: { nameWithOwner: 'rust-lang/rustup' }
+                      }
+                    ]
+                  }
+                },
+                {
+                  title: 'Add `rustup doc --serve`',
+                  url: 'https://github.com/rust-lang/rustup/pull/4986',
+                  state: 'MERGED',
+                  merged: true,
+                  createdAt: '2026-07-29T00:00:00Z',
+                  closedAt: '2026-07-31T00:00:00Z',
+                  body: 'Fixes #4975',
+                  repository: { nameWithOwner: 'rust-lang/rustup' },
+                  closingIssuesReferences: {
+                    nodes: [
+                      {
+                        number: 4975,
+                        title: 'Improve doc UX',
+                        url: 'https://github.com/rust-lang/rustup/issues/4975',
+                        state: 'CLOSED',
+                        createdAt: '2026-07-26T00:00:00Z',
+                        closedAt: '2026-07-31T00:00:00Z',
+                        body: 'Snap browsers cannot open file:// URLs.',
+                        author: { login: 'Aneesh-382005' },
+                        comments: { totalCount: 0, nodes: [] },
                         repository: { nameWithOwner: 'rust-lang/rustup' }
                       }
                     ]
@@ -149,9 +175,10 @@ describe('getRecentWork', () => {
       fetchFn: fetchFn as unknown as typeof fetch
     });
 
-    const { pullRequests } = await client.getRecentWork();
+    const { pullRequests, reading_guide } = await client.getRecentWork();
 
-    expect(pullRequests).toHaveLength(1);
+    expect(reading_guide).toContain('third-party text');
+    expect(pullRequests).toHaveLength(2);
     expect(pullRequests[0].state).toBe('merged');
     expect(pullRequests[0].days_from_issue_to_merge).toBe(2);
     expect(pullRequests[0].linked_issues).toEqual([
@@ -161,12 +188,14 @@ describe('getRecentWork', () => {
         state: 'closed',
         author: 'rami3l',
         comment_count: 1,
-        raised_by_candidate: false,
         origin: 'volunteered',
-        summary: 'We should systematically use the logging system here.',
+        arose_from_pr: 'https://github.com/rust-lang/rustup/pull/4986',
+        summary: 'In #4986 the output is not logged. We should systematically use the logging system here.',
         comments: [expect.objectContaining({ by_candidate: true, author_association: 'CONTRIBUTOR', body: "I'll take a shot at it." })]
       })
     ]);
+    expect(pullRequests[1].linked_issues[0]).toMatchObject({ origin: 'self_raised' });
+    expect(pullRequests[1].linked_issues[0].arose_from_pr).toBeUndefined();
   });
 
   it('falls back to REST fan-out when no token is present (GraphQL requires auth)', async () => {
@@ -282,7 +311,7 @@ describe('getRecentWork', () => {
 
     await client.getRecentWork();
 
-    const graphqlCall = fetchFn.mock.calls.find(([input]) => String(input) === GRAPHQL_URL);
+    const graphqlCall = (fetchFn.mock.calls as unknown[][]).find(([input]) => String(input) === GRAPHQL_URL);
     expect(graphqlCall).toBeDefined();
     const init = graphqlCall?.[1] as RequestInit | undefined;
     const body = JSON.parse(String(init?.body));

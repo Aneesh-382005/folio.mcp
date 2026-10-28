@@ -1,25 +1,45 @@
+/// <reference types="vite/client" />
 import { describe, expect, it } from 'vitest';
-import { dropNulls, toolResult } from '../src/tool-result';
+import { z } from 'zod/v4';
+import { ToolError, registerTool } from '../src/tool-result';
 
-describe('toolResult', () => {
-  it('returns content that is exactly the JSON of structuredContent', () => {
-    const result = toolResult({ a: 1, nested: { b: [1, 2, { c: 'x' }] }, empty: [] });
+type Handler = (args: unknown) => Promise<{ content: Array<{ text: string }>; structuredContent?: unknown; isError?: boolean }>;
 
-    expect(result.content).toHaveLength(1);
-    expect(result.content[0].type).toBe('text');
+function fakeServer() {
+  const handlers = new Map<string, Handler>();
+  const server = { tool: (name: string, _description: string, ...rest: unknown[]) => handlers.set(name, rest.at(-1) as Handler) };
+  return { server: server as never, handlers };
+}
+
+describe('registerTool', () => {
+  it('builds content and structuredContent from the same data', async () => {
+    const { server, handlers } = fakeServer();
+    registerTool(server, 'greet', 'd', { name: z.string() }, ({ name }) => ({ hello: name, nested: { list: [1, null] } }));
+
+    const result = await handlers.get('greet')!({ name: 'Ada' });
+
     expect(JSON.parse(result.content[0].text)).toEqual(result.structuredContent);
-    expect(result.content[0].text).toBe(JSON.stringify(result.structuredContent));
+    expect(result.structuredContent).toEqual({ hello: 'Ada', nested: { list: [1, null] } });
   });
 
-  it('drops null/undefined object properties in both fields but keeps array items and empty collections', () => {
-    const result = toolResult({ keep: 0, gone: null, missing: undefined, list: [null, 1], inner: { gone: null, empty: {} } });
+  it('turns a thrown ToolError into an error result and rethrows anything else', async () => {
+    const { server, handlers } = fakeServer();
+    registerTool(server, 'fails', 'd', () => { throw new ToolError('nope'); });
+    registerTool(server, 'crashes', 'd', () => { throw new Error('bug'); });
 
-    expect(result.structuredContent).toEqual({ keep: 0, list: [null, 1], inner: { empty: {} } });
-    expect(JSON.parse(result.content[0].text)).toEqual(result.structuredContent);
+    expect(await handlers.get('fails')!({})).toEqual({ isError: true, content: [{ type: 'text', text: 'nope' }] });
+    await expect(handlers.get('crashes')!({})).rejects.toThrow('bug');
   });
+});
 
-  it('dropNulls leaves primitives alone', () => {
-    expect(dropNulls('s')).toBe('s');
-    expect(dropNulls(0)).toBe(0);
+describe('tool registration', () => {
+  const sources = import.meta.glob('../src/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+
+  it('registers every tool through registerTool, never server.tool directly', () => {
+    const offenders = Object.entries(sources)
+      .filter(([file, text]) => !file.endsWith('/tool-result.ts') && /\.(tool|registerTool)\(/.test(text))
+      .map(([file]) => file);
+
+    expect(offenders).toEqual([]);
   });
 });

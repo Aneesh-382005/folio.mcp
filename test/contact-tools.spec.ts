@@ -56,8 +56,7 @@ describe('sendMessageViaResend', () => {
       }
     );
 
-    expect(result.isError).toBeFalsy();
-    expect(result.content[0].text).toContain('Message sent to Aneesh from Jordan Lee.');
+    expect(result.message).toContain('Message sent to Aneesh from Jordan Lee.');
     expect(fetchFn).toHaveBeenCalledTimes(1);
 
     const firstCall = fetchFn.mock.calls[0];
@@ -145,7 +144,7 @@ describe('sendMessageViaResend', () => {
       expect(result.isError).toBeFalsy();
     }
 
-    const blockedResult = await sendMessageViaResend(
+    const blocked = sendMessageViaResend(
       {
         sender_name: 'Sender 4',
         message: 'This should be blocked.'
@@ -158,8 +157,7 @@ describe('sendMessageViaResend', () => {
       }
     );
 
-    expect(blockedResult.isError).toBe(true);
-    expect(blockedResult.content[0].text).toContain('Rate limit exceeded');
+    await expect(blocked).rejects.toThrow('Rate limit exceeded');
     expect(fetchFn).toHaveBeenCalledTimes(3);
   });
 
@@ -174,7 +172,7 @@ describe('sendMessageViaResend', () => {
       }
     });
 
-    const result = await sendMessageViaResend(
+    const failed = sendMessageViaResend(
       {
         sender_name: 'Jordan Lee',
         message: 'Test failure path.'
@@ -187,7 +185,6 @@ describe('sendMessageViaResend', () => {
       }
     );
 
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('Resend returned an error');
+    await expect(failed).rejects.toThrow('Resend returned an error');
   });
 });
