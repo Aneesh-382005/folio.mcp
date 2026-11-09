@@ -11,6 +11,11 @@ const tabsReadyClass = 'js-ready';
 
 document.documentElement.classList.add(tabsReadyClass);
 
+document.querySelectorAll('[data-add-claude]').forEach((link) => {
+  const params = new URLSearchParams({ modal: 'add-custom-connector', connectorName: 'Folio', connectorUrl: MCP_URL });
+  link.href = `https://claude.ai/customize/connectors?${params}`;
+});
+
 document.querySelectorAll('[data-mcp-url-copy]').forEach((button) => {
   button.dataset.copyText = MCP_URL;
 });

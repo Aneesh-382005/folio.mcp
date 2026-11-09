@@ -56,13 +56,17 @@
             <section class="tab-panel is-active" id="panel-chatgpt" role="tabpanel" aria-labelledby="ChatGPT">
               <div class="panel-card">
                 <p class="panel-label">ChatGPT</p>
+                <div class="panel-actions">
+                  <a class="button add-client" href="https://chatgpt.com/plugins" target="_blank" rel="noreferrer" data-mcp-url-copy>Add to ChatGPT</a>
+                  <span class="panel-hint">Copies the URL and opens ChatGPT's Plugins page.</span>
+                </div>
                 <ol class="steps">
-                  <li>Look for <code>Apps</code> then <code>Settings</code>.</li>
-                  <li>Under the <code>Apps</code> section, turn on <code>Developer mode</code>.</li>
-                  <li>Name the server anything.</li>
-                  <li>Paste the server link: <code data-mcp-url-code></code>.</li>
-                  <li>Select <code>No auth</code> (mine doesn't require any).</li>
-                  <li>Add tool.</li>
+                  <li>In the sidebar, open <code>Plugins</code>, then click <code>Add</code> → <code>Add custom MCP server</code>.</li>
+                  <li>Name it anything.</li>
+                  <li>Under <code>Connection</code>, choose <code>Server URL</code> and paste <code data-mcp-url-code></code>.</li>
+                  <li>Set <code>Authentication</code> to <code>No authentication</code> (mine doesn't require any).</li>
+                  <li>Tick <code>I understand and want to continue</code>, then click <code>Create as a plugin</code>.</li>
+                  <li>In a chat, click <code>+</code> and pick <code>folio-mcp</code>.</li>
                 </ol>
                 <div class="snippet">
                   <button class="copy-snippet" type="button" data-mcp-url-copy>Copy URL</button>
@@ -75,12 +79,14 @@
               <div class="panel-card">
                 <p class="panel-label">Claude Desktop</p>
                 <ol class="steps">
-                  <li>Edit <code>claude_desktop_config.json</code>, add under <code>mcpServers</code>: <code>{"folio-mcp": {"type": "http", "url": "</code><code><span data-mcp-url-text></span></code><code>"}}</code>.</li>
-                  <li>Restart Claude Desktop.</li>
+                  <li>Sign in to the desktop app and go to <code>Customize</code> → <code>Connectors</code>. Connectors are shared with Claude.ai.</li>
+                  <li>Click <code>Add</code> → <code>Add custom connector</code>.</li>
+                  <li>Name it <code>folio-mcp</code> and paste <code data-mcp-url-code></code> as the <code>MCP server URL</code>.</li>
+                  <li>Click <code>Continue</code>. If asked for authentication, choose <code>No sign-in</code>.</li>
                 </ol>
                 <div class="snippet">
-                  <button class="copy-snippet" type="button" data-mcp-url-copy>Copy snippet</button>
-                  <pre><code>{"folio-mcp": {"type": "http", "url": "</code><code><span data-mcp-url-text></span></code><code>"}}</code></pre>
+                  <button class="copy-snippet" type="button" data-mcp-url-copy>Copy URL</button>
+                  <pre><code data-mcp-url-code></code></pre>
                 </div>
               </div>
             </section>
@@ -88,11 +94,15 @@
             <section class="tab-panel" id="panel-claude-ai" role="tabpanel" aria-labelledby="Claude.ai">
               <div class="panel-card">
                 <p class="panel-label">Claude.ai</p>
+                <div class="panel-actions">
+                  <a class="button add-client" href="https://claude.ai/customize/connectors" target="_blank" rel="noreferrer" data-mcp-url-copy data-add-claude>Add to Claude</a>
+                  <span class="panel-hint">Opens Claude's Add custom connector dialog with the name and URL filled in. Copies the URL as a fallback.</span>
+                </div>
                 <ol class="steps">
-                  <li>On the left sidebar, select <code>Customize</code>, and then <code>Connectors</code> and the plus sign <code>'+'</code> Add connector.</li>
-                  <li>Paste <code data-mcp-url-code></code>.</li>
-                  <li>Name it <code>folio-mcp</code>.</li>
-                  <li>Save.</li>
+                  <li>Click <strong>Add to Claude</strong>. The <code>Add custom connector</code> dialog opens with the name and <code data-mcp-url-code></code> filled in. Claude shows a "suggested by an external link" notice; that is expected, so just check the URL is this site's.</li>
+                  <li>Or do it by hand: <code>Customize</code> → <code>Connectors</code> → <code>Add</code> → <code>Add custom connector</code>, then paste the URL as the <code>MCP server URL</code>.</li>
+                  <li>Click <code>Continue</code>. If asked for authentication, choose <code>No sign-in</code> (mine doesn't require any).</li>
+                  <li>In a chat, click <code>+</code> → <code>Connectors</code> and turn <code>Folio</code> on.</li>
                 </ol>
                 <div class="snippet">
                   <button class="copy-snippet" type="button" data-mcp-url-copy>Copy URL</button>
